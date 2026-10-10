@@ -102,8 +102,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "check-scope":
         try:
-            g = Guardrails()
-            g.scope.check_authorized()
+            Guardrails()  # construction itself checks authorization
         except ScopeViolation as exc:
             print(f"SCOPE INVALID: {exc}", file=sys.stderr)
             return 1

@@ -46,9 +46,10 @@ class RunReport:
             lines.append("")
         return "\n".join(lines)
 
-    def save(self) -> Path:
-        cfg.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    def save(self, reports_dir: Path | None = None) -> Path:
+        target_dir = reports_dir or cfg.REPORTS_DIR
+        target_dir.mkdir(parents=True, exist_ok=True)
         ts = self.started_at.strftime("%Y%m%d-%H%M%S")
-        path = cfg.REPORTS_DIR / f"run-{ts}.md"
+        path = target_dir / f"run-{ts}.md"
         path.write_text(self.render(), encoding="utf-8")
         return path

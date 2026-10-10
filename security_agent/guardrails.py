@@ -235,9 +235,23 @@ class ApprovalGate:
 class Guardrails:
     """Single object the agent loop and every tool hold a reference to."""
 
-    def __init__(self, asker=None, auto_deny_approvals: bool = False):
-        self.scope = Scope.load()
-        self.audit = AuditLog()
+    def __init__(
+        self,
+        asker=None,
+        auto_deny_approvals: bool = False,
+        scope: "Scope | None" = None,
+        audit: "AuditLog | None" = None,
+    ):
+        # scope/audit are injectable so tests can exercise real Guardrails
+        # logic against a throwaway Scope/AuditLog instead of monkeypatching
+        # Scope.load or touching the real scope.yaml / reports/audit.jsonl.
+        self.scope = scope or Scope.load()
+        # Fail fast at construction, not only on the first tool call: an
+        # unauthorized scope.yaml should refuse before the agent loop even
+        # starts talking to a model, not silently wait until something
+        # tries to act.
+        self.scope.check_authorized()
+        self.audit = audit or AuditLog()
         self.budget = BudgetTracker(self.scope)
         self.approval = ApprovalGate(self.scope, asker=asker, auto_deny=auto_deny_approvals)
 

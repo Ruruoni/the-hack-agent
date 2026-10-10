@@ -69,6 +69,8 @@ class SecurityAgent:
         guardrails: Guardrails | None = None,
         registry: ToolRegistry | None = None,
         provider: LLMProvider | None = None,
+        knowledge: KnowledgeBase | None = None,
+        reports_dir=None,
     ):
         self.config = config or AgentConfig()
         # If the operator wants an interactive approval prompt (CLI default),
@@ -79,7 +81,9 @@ class SecurityAgent:
         )
         self.registry = registry or build_default_registry()
         self.provider = provider or build_provider(self.config.provider)
-        self.knowledge = KnowledgeBase()
+        self.knowledge = knowledge or KnowledgeBase()
+        # Injectable so tests don't write into the real reports/ directory.
+        self.reports_dir = reports_dir
 
     def run(self, objective: str) -> RunReport:
         report = RunReport(objective)
@@ -130,7 +134,7 @@ class SecurityAgent:
         else:
             report.add_finding("Run stopped: max_iterations reached.")
 
-        report_path = report.save()
+        report_path = report.save(reports_dir=self.reports_dir)
         self.knowledge.write_note(
             f"run-summary-{report.started_at.strftime('%Y%m%d-%H%M%S')}",
             f"Objective: {objective}\n\nSee {report_path.name} for full detail.\n\n"

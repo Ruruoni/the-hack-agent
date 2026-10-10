@@ -113,12 +113,30 @@ The agent doesn't rewrite its own code unsupervised. Growth happens two ways:
    and get reviewed/pruned like any other file in PRs.
 2. **Capability growth** — adding a new tool in `security_agent/tools/`,
    adjusting the prompt in `loop.py`, or loosening `scope.yaml` is a normal
-   pull request. `.github/workflows/security-agent-eval.yml` runs
-   `evals/run_eval.py` against your own lab targets on every such PR; a
-   change that regresses the pass rate shouldn't merge. `CODEOWNERS`
-   requires your review on `scope.yaml` and `guardrails.py` specifically,
-   so the agent's own proposed changes can never loosen its safety
-   boundary without a human approving it.
+   pull request. Two CI gates run on it: `.github/workflows/tests.yml`
+   (the `tests/` suite — fast, no GPU/LLM/network needed, runs on every
+   push) and `.github/workflows/security-agent-eval.yml`
+   (`evals/run_eval.py` against your own lab targets — needs a live model,
+   only runs on agent-touching PRs). `CODEOWNERS` requires your review on
+   `scope.yaml`, `guardrails.py`, and its test file specifically, so the
+   agent's own proposed changes can never loosen its safety boundary (or
+   the tests that would catch a regression there) without a human
+   approving it.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```
+
+74 tests covering `guardrails.py` (scope/budget/approval enforcement —
+the single most safety-critical file here), every tool's guardrail
+integration and category-escalation logic, `memory.py`'s playbook/
+growth-note loading, the CLI, and the full agent loop against a scripted
+fake provider. No GPU, API key, or network access needed — these are
+pure logic tests, separate from `evals/` (which needs a live model and
+real lab targets).
 
 ## Extending
 

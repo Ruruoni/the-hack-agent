@@ -1,0 +1,24 @@
+name: tests
+
+# Fast, dependency-free regression tests (no GPU, no LLM API key, no
+# network) on every push/PR -- separate from eval-gate.yml, which needs
+# a live model and live lab targets and only runs on agent-touching PRs.
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run test suite
+        run: python -m pytest tests/ -v
