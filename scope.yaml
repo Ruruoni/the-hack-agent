@@ -33,6 +33,26 @@ targets:
 # Time window the agent may actively run in (optional). Empty = unrestricted.
 allowed_hours_utc: []           # e.g. ["02:00-06:00"]
 
+# Confirmed, authorized recipients for submit_bug_report -- DELIBERATELY
+# SEPARATE from targets.allowed_domains above. The organization's real
+# disclosure contact is very often a different domain entirely from
+# whatever you tested (a HackerOne/Bugcrowd-hosted inbox, a parent
+# company's security@ address, whatever their published security.txt or
+# bug-bounty program page actually lists) -- forcing it to match the
+# tested domain would refuse legitimate sends and has no safety benefit.
+#
+# List only an address/domain you have personally confirmed is that
+# organization's actual, current disclosure channel (check their
+# security.txt at /.well-known/security.txt, or the bug-bounty
+# program's own published contact) -- never one the agent, a prompt, or
+# anything else suggested to you. Adding an entry here is you asserting
+# "I have verified this is the right recipient," the same weight as
+# authorized_by/authorization_reference above. submit_bug_report still
+# always blocks on human approval regardless of this list -- this list
+# only controls which recipients are even eligible to be approved.
+disclosure:
+  allowed_recipients: []          # e.g. ["security@acme-corp.com", "*.hackerone.com"]
+
 # Rules of engagement enforced by guardrails.py, not just documented here.
 rules_of_engagement:
   allow_passive_recon: true       # DNS, WHOIS, cert transparency, port scans
@@ -58,15 +78,17 @@ budgets:
 # category -- e.g. adding "active_scanning" means every active_scanning
 # tool call blocks on approval, not just exploitation-tier ones.
 #
-# credential_test, hash_crack, and phishing_simulation_launch
-# (security_agent/tools/credential_attacks.py and
-# phishing_simulation.py) are always `exploitation` in code regardless
-# of what's listed here -- they cannot be made to skip the approval
-# gate by removing "exploitation" from this list.
+# exploitation, any_write_to_target, and external_disclosure are all
+# hardcoded into guardrails.ALWAYS_REQUIRE_APPROVAL -- credential_test,
+# hash_crack, phishing_simulation_launch (exploitation),
+# apply_fix_to_repo (any_write_to_target), and submit_bug_report
+# (external_disclosure) are gated unconditionally in code and CANNOT be
+# made to skip approval by editing this list, even to an empty list.
+# Listing them here (as exploitation already is) is redundant but
+# harmless -- it's not what's actually enforcing the gate for those.
 #
-# self_modification_pr and any_write_to_target are illustrative labels
-# only -- no tool currently declares those exact category strings, so
-# listing them here has no effect yet. Self-growth PRs are instead
+# self_modification_pr is still an illustrative label only -- no tool
+# declares that exact category string. Self-growth PRs are instead
 # gated by CODEOWNERS (see repo root) requiring human review on
 # scope.yaml/guardrails.py changes specifically.
 require_human_approval_for:

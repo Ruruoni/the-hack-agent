@@ -64,6 +64,7 @@ class Scope:
     rules_of_engagement: dict[str, Any]
     budgets: dict[str, Any]
     require_human_approval_for: list[str]
+    allowed_disclosure_recipients: list[str] = ()
 
     @classmethod
     def load(cls, path: Path = cfg.SCOPE_FILE) -> "Scope":
@@ -86,6 +87,9 @@ class Scope:
             rules_of_engagement=raw.get("rules_of_engagement", {}) or {},
             budgets=raw.get("budgets", {}) or {},
             require_human_approval_for=raw.get("require_human_approval_for", []) or [],
+            allowed_disclosure_recipients=(
+                (raw.get("disclosure", {}) or {}).get("allowed_recipients", []) or []
+            ),
         )
 
     def check_authorized(self) -> None:
@@ -141,6 +145,31 @@ class Scope:
                 f"Target '{target}' is not in scope.yaml's allowed_domains "
                 f"or allowed_cidrs. Refusing to touch it."
             )
+
+    def check_disclosure_recipient(self, recipient: str) -> None:
+        """Separate from check_target on purpose: a bug report's real
+        destination (a security contact, a bug-bounty platform inbox)
+        is very often a different domain than whatever was tested, so
+        this checks against scope.yaml's disclosure.allowed_recipients
+        instead of targets.allowed_domains. Supports an exact email, a
+        bare domain, or a domain wildcard (e.g. "*.hackerone.com").
+        """
+        self.check_authorized()
+        recipient = recipient.lower().strip()
+        domain = recipient.split("@")[-1] if "@" in recipient else recipient
+
+        for pattern in self.allowed_disclosure_recipients:
+            pattern = pattern.lower().strip()
+            if fnmatch.fnmatch(recipient, pattern) or fnmatch.fnmatch(domain, pattern):
+                return
+        raise ScopeViolation(
+            f"Recipient '{recipient}' is not in scope.yaml's "
+            f"disclosure.allowed_recipients. Refusing to send to it. "
+            f"Add the confirmed, correct disclosure address/domain there "
+            f"first -- this list is separate from targets.allowed_domains "
+            f"on purpose, since the real contact is often a different "
+            f"domain than whatever was tested."
+        )
 
     def check_action_allowed(self, action_category: str) -> None:
         """action_category in {'passive_recon','active_scanning',

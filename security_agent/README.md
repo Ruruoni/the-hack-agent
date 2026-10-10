@@ -119,7 +119,7 @@ itself writes after each run.
 | `propose_fix` | passive_recon (drafts only, touches nothing) | Drafts a reviewable patch/config-snippet for a confirmed finding |
 | `apply_fix_to_repo` (git) | **any_write_to_target**, always, regardless of scope.yaml | Applies a drafted fix to a LOCAL repo clone (branch+commit, never pushes) |
 | `format_bug_report` | passive_recon (drafts only, touches nothing) | Formats a finding + fix into a standard downloadable report file |
-| `submit_bug_report` (email/API) | **external_disclosure**, always, regardless of scope.yaml | Sends a drafted report to the org's own disclosure channel; recipient domain scope-checked first |
+| `submit_bug_report` (email/API) | **external_disclosure**, always, regardless of scope.yaml | Sends a drafted report to a confirmed recipient in scope.yaml's disclosure.allowed_recipients |
 
 All of the above are optional external dependencies — a missing binary
 makes that one tool refuse with a clear message, nothing is vendored
@@ -226,10 +226,17 @@ never a default next step the agent takes on its own:
   via a bug-bounty platform's API — to the organization's own
   disclosure channel. Only for when the human operator has explicitly
   asked for that specific send. Locked behind the unconditional
-  `external_disclosure` approval gate, and the recipient's domain is
-  checked against `scope.yaml`'s `allowed_domains` *before* the
-  approval prompt even fires — an explicit human instruction to send
-  cannot widen what was actually authorized for the engagement.
+  `external_disclosure` approval gate, and the recipient is checked
+  against `scope.yaml`'s `disclosure.allowed_recipients` *before* the
+  approval prompt even fires — deliberately separate from
+  `targets.allowed_domains`, since the organization's real disclosure
+  contact is very often a different domain than whatever was actually
+  tested (a HackerOne/Bugcrowd-hosted inbox, a parent company's
+  security@ address). An explicit human instruction to send still can't
+  reach a recipient that hasn't been separately confirmed and listed
+  there — that confirmation (you've checked their security.txt or
+  bounty-program page) is what the list represents, not a limitation on
+  top of it.
 
 By default, the person running this agent relays the drafted report
 themselves through whatever channel their engagement actually uses

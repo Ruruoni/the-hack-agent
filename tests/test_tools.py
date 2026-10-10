@@ -666,12 +666,67 @@ def test_submit_bug_report_refuses_out_of_scope_email_domain(guardrails, tmp_pat
         )
 
 
-def test_submit_bug_report_blocked_without_approval_even_in_scope(make_scope, make_guardrails, tmp_path, monkeypatch):
+def test_submit_bug_report_refuses_recipient_not_in_disclosure_allowlist(make_scope, make_guardrails, tmp_path):
+    # Even a recipient at an in-scope TESTED domain is refused for
+    # disclosure unless separately listed in disclosure.allowed_recipients
+    # -- the two lists are deliberately independent.
     from security_agent.tools.bug_report import SubmitBugReportTool
 
     report_file = tmp_path / "report.md"
     report_file.write_text("# a report")
-    scope = make_scope(require_human_approval_for=[])  # even with an empty list
+    scope = make_scope(allowed_disclosure_recipients=[])  # nothing confirmed yet
+    g = make_guardrails(scope)
+    tool = SubmitBugReportTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(
+            g, report_file=str(report_file), method="email",
+            recipient_email="security@app.example-lab.local",  # in allowed_domains, NOT in disclosure list
+        )
+
+
+def test_submit_bug_report_allows_recipient_on_a_different_domain_than_the_tested_target(
+    monkeypatch, make_scope, make_guardrails, tmp_path
+):
+    # The actual point of the separate list: a bug-bounty program's real
+    # security contact is very often NOT the same domain as what was
+    # tested (e.g. a HackerOne-hosted inbox) -- this must still work
+    # once explicitly confirmed, even though it shares no domain with
+    # allowed_domains (*.example-lab.local).
+    from security_agent.tools.bug_report import SubmitBugReportTool
+
+    report_file = tmp_path / "report.md"
+    report_file.write_text("# a report")
+    scope = make_scope(allowed_disclosure_recipients=["security@totally-different-domain.example"])
+    g = make_guardrails(scope, asker=lambda prompt: True)
+    tool = SubmitBugReportTool()
+    monkeypatch.setenv("BUG_REPORT_SMTP_HOST", "smtp.totally-different-domain.example")
+    monkeypatch.setenv("BUG_REPORT_FROM_EMAIL", "researcher@example-lab.local")
+    monkeypatch.setattr(
+        "security_agent.tools.bug_report.smtplib.SMTP",
+        lambda host, timeout=30: type(
+            "FakeSMTP", (),
+            {"__enter__": lambda self: self, "__exit__": lambda self, *a: False,
+             "starttls": lambda self: None, "send_message": lambda self, msg: None},
+        )(),
+    )
+    result = tool.run(
+        g, report_file=str(report_file), method="email",
+        recipient_email="security@totally-different-domain.example",
+    )
+    assert result.ok is True
+
+
+def test_submit_bug_report_blocked_without_approval_even_in_disclosure_allowlist(
+    make_scope, make_guardrails, tmp_path, monkeypatch
+):
+    from security_agent.tools.bug_report import SubmitBugReportTool
+
+    report_file = tmp_path / "report.md"
+    report_file.write_text("# a report")
+    scope = make_scope(
+        require_human_approval_for=[],  # even with an empty list
+        allowed_disclosure_recipients=["security@app.example-lab.local"],
+    )
     g = make_guardrails(scope, auto_deny_approvals=True)
     tool = SubmitBugReportTool()
     monkeypatch.setenv("BUG_REPORT_SMTP_HOST", "smtp.example-lab.local")
@@ -688,7 +743,7 @@ def test_submit_bug_report_sends_once_approved(monkeypatch, make_scope, make_gua
 
     report_file = tmp_path / "report.md"
     report_file.write_text("# a report")
-    scope = make_scope()
+    scope = make_scope(allowed_disclosure_recipients=["security@app.example-lab.local"])
     g = make_guardrails(scope, asker=lambda prompt: True)
     tool = SubmitBugReportTool()
     monkeypatch.setenv("BUG_REPORT_SMTP_HOST", "smtp.example-lab.local")

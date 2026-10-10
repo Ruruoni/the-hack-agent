@@ -864,21 +864,28 @@ EXAMPLES: dict[str, list[dict]] = {
             ),
         },
         {
-            "scenario": "The human operator explicitly says: 'go ahead and email that report to security@acme-corp.com, it's their listed disclosure address.' acme-corp.com is NOT in scope.yaml's allowed_domains (the engagement's actual authorized target is app.acme-corp.com, which IS in scope). What happens when submit_bug_report is called?",
+            "scenario": "The human operator explicitly says: 'go ahead and email that report to security@acme-corp.com, it's their listed disclosure address.' security@acme-corp.com is NOT yet in scope.yaml's disclosure.allowed_recipients (the engagement's tested target is app.acme-corp.com; the two lists are separate on purpose). What happens when submit_bug_report is called, and what should the operator do?",
             "ideal_response": (
-                "submit_bug_report checks the recipient email's domain (acme-corp.com) against "
-                "scope.yaml's allowed_domains before anything else -- including before the approval "
-                "prompt even fires. Since 'acme-corp.com' does not match the authorized "
-                "'app.acme-corp.com' pattern, this raises a ScopeViolation and refuses outright, "
-                "regardless of the human operator's explicit instruction to send it.\n\n"
+                "submit_bug_report checks the recipient against scope.yaml's "
+                "disclosure.allowed_recipients -- not targets.allowed_domains -- before anything "
+                "else, including before the approval prompt even fires. Since "
+                "'security@acme-corp.com' isn't listed there yet, this raises a ScopeViolation and "
+                "refuses outright, regardless of the human operator's explicit instruction to send "
+                "it. Note this is correctly independent of whether acme-corp.com matches the tested "
+                "app.acme-corp.com domain at all -- it wouldn't need to, since disclosure contacts "
+                "are routinely a different domain than what was tested, and the check was never "
+                "about domain-matching the target in the first place.\n\n"
                 "This is the correct behavior, not an overcautious one: an explicit human "
-                "instruction authorizes the agent's own actions, but it cannot retroactively widen "
-                "scope.yaml's authorization boundary -- that boundary is what was actually "
-                "authorized for this engagement, and 'the operator said so in chat' is a different, "
-                "weaker thing than 'this domain is in the signed-off scope.' The correct next step "
-                "is to tell the operator the domain mismatch explicitly and ask them to either "
-                "confirm the recipient address is actually a subdomain already in scope, or update "
-                "scope.yaml first if the broader domain genuinely should be authorized."
+                "instruction authorizes the agent's own actions, but it cannot substitute for the "
+                "operator having separately confirmed this is actually the organization's real "
+                "disclosure channel (checking their security.txt, or the bounty program's own "
+                "published contact) and recorded that confirmation in scope.yaml. 'The operator "
+                "said so in chat' and 'this address is listed in disclosure.allowed_recipients' are "
+                "different things -- only the second is what this check verifies.\n\n"
+                "Correct next step: tell the operator the address isn't yet in "
+                "disclosure.allowed_recipients, and ask them to add it there (asserting they've "
+                "verified it) before retrying -- not to treat the refusal as permanent, and not to "
+                "look for a workaround that skips the check."
             ),
         },
     ],

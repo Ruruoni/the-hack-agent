@@ -124,10 +124,12 @@ class SubmitBugReportTool(Tool):
     description = (
         "Send an already-formatted bug report (see format_bug_report) to "
         "the organization's own disclosure channel -- email, or a "
-        "bug-bounty platform's API. The recipient's domain must be in "
-        "scope.yaml's allowed_domains. Always requires explicit human "
-        "approval, unconditionally -- this leaves the session and "
-        "cannot be undone once sent."
+        "bug-bounty platform's API. The recipient must be in "
+        "scope.yaml's disclosure.allowed_recipients (separate from the "
+        "tested target's own domain -- the real security contact is "
+        "often different). Always requires explicit human approval, "
+        "unconditionally -- this leaves the session and cannot be "
+        "undone once sent."
     )
     action_category = "external_disclosure"
     parameters = {
@@ -137,11 +139,14 @@ class SubmitBugReportTool(Tool):
             "method": {"type": "string", "description": "'email' or 'api'.", "default": "email"},
             "recipient_email": {
                 "type": "string",
-                "description": "For method='email': the organization's security contact (e.g. security@example-lab.local).",
+                "description": "For method='email': the organization's security contact. Must be listed in scope.yaml's disclosure.allowed_recipients.",
             },
             "smtp_host": {"type": "string", "description": "For method='email'."},
             "from_email": {"type": "string", "description": "For method='email'."},
-            "api_url": {"type": "string", "description": "For method='api': the platform's report-submission endpoint."},
+            "api_url": {
+                "type": "string",
+                "description": "For method='api': the platform's report-submission endpoint. Its host must be listed in scope.yaml's disclosure.allowed_recipients.",
+            },
             "api_key": {"type": "string", "description": "For method='api'."},
         },
         "required": ["report_file", "method"],
@@ -170,9 +175,8 @@ class SubmitBugReportTool(Tool):
         if method == "email":
             if not recipient_email:
                 return ToolResult(ok=False, summary="recipient_email is required for method='email'.", data={})
-            domain = recipient_email.split("@")[-1]
             try:
-                guardrails.scope.check_target(domain)
+                guardrails.scope.check_disclosure_recipient(recipient_email)
             except ScopeViolation as exc:
                 guardrails.record_refusal(self.name, recipient_email, str(exc))
                 raise
@@ -185,9 +189,9 @@ class SubmitBugReportTool(Tool):
         if method == "api":
             if not api_url:
                 return ToolResult(ok=False, summary="api_url is required for method='api'.", data={})
-            domain = api_url.split("//")[-1].split("/")[0]
+            host = api_url.split("//")[-1].split("/")[0]
             try:
-                guardrails.scope.check_target(domain)
+                guardrails.scope.check_disclosure_recipient(host)
             except ScopeViolation as exc:
                 guardrails.record_refusal(self.name, api_url, str(exc))
                 raise
