@@ -40,9 +40,12 @@ and ground rules that tie them together.
    Critical/High/Medium/Low/Info), breach macro-pattern, MITRE ATT&CK
    tactic/technique, NIST CSF 2.0 function, ISO 27001:2022 Annex A
    clause, CIS Control v8 (+ Implementation Group), PCI DSS v4.0
-   requirement (or "not applicable"), and concrete remediation. Write
-   this into the run report; `security_agent/memory.py` also keeps a
-   short note in `knowledge/` so the same ground isn't re-covered
+   requirement (or "not applicable"), and concrete remediation. For any
+   finding with a known, demonstrable fix, also call `propose_fix` right
+   after reporting it — a draft patch/config-snippet file, no approval
+   needed since nothing is touched — and reference it in the finding.
+   Write this into the run report; `security_agent/memory.py` also keeps
+   a short note in `knowledge/` so the same ground isn't re-covered
    blindly next run.
 
 ## Basic → advanced, in one sentence per level

@@ -75,6 +75,8 @@ def test_default_registry_has_expected_tools():
         "credential_test",
         "hash_crack",
         "phishing_simulation_launch",
+        "propose_fix",
+        "apply_fix_to_repo",
     ):
         assert expected in names
 
@@ -508,3 +510,114 @@ def test_phishing_simulation_blocked_without_approval(make_scope, make_guardrail
             campaign_id=1,
             recipient_emails=["employee@app.example-lab.local"],
         )
+
+
+# ---------------------------------------------------------- propose_fix / apply_fix_to_repo
+
+
+def test_propose_fix_needs_no_approval_and_writes_reviewable_file(guardrails, monkeypatch, tmp_path):
+    from security_agent import config as cfg
+    from security_agent.tools.remediation import ProposeFixTool
+
+    monkeypatch.setattr(cfg, "REPORTS_DIR", tmp_path / "reports")
+    tool = ProposeFixTool()
+    result = tool.run(
+        guardrails,
+        finding_title="Missing MFA on admin panel",
+        root_cause="Admin login accepts username+password only.",
+        patch="--- a/config\n+++ b/config\n+require_mfa = true\n",
+        verification_steps="Attempt admin login without MFA; it should now be rejected.",
+        target_file="config/auth.yaml",
+    )
+    assert result.ok is True
+    written = (tmp_path / "reports" / "fixes").glob("*.md")
+    files = list(written)
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "Missing MFA on admin panel" in content
+    assert "require_mfa = true" in content
+    assert "Nothing on the" in content  # the "not applied" disclaimer
+
+
+def test_propose_fix_never_touches_a_network_target(guardrails, monkeypatch, tmp_path):
+    # propose_fix takes no network target at all -- confirm it runs
+    # successfully even with a scope that denies everything else, since
+    # drafting a fix doesn't go through check_target/check_action_allowed.
+    from security_agent import config as cfg
+    from security_agent.tools.remediation import ProposeFixTool
+
+    monkeypatch.setattr(cfg, "REPORTS_DIR", tmp_path / "reports")
+    tool = ProposeFixTool()
+    result = tool.run(
+        guardrails,
+        finding_title="X",
+        root_cause="Y",
+        patch="Z",
+        verification_steps="W",
+    )
+    assert result.ok is True
+
+
+def test_apply_fix_to_repo_blocked_without_approval(make_scope, make_guardrails, tmp_path):
+    from security_agent.tools.remediation import ApplyFixToRepoTool
+
+    scope = make_scope(require_human_approval_for=[])  # even with an empty list
+    g = make_guardrails(scope, auto_deny_approvals=True)
+    tool = ApplyFixToRepoTool()
+    with pytest.raises(ApprovalRequired):
+        tool.run(
+            g,
+            repo_path=str(tmp_path),
+            branch_name="fix/mfa",
+            patch_file="/tmp/fix.patch",
+            commit_message="Require MFA on admin login",
+        )
+
+
+def test_apply_fix_to_repo_runs_once_approved(monkeypatch, make_scope, make_guardrails, tmp_path):
+    from security_agent.tools.remediation import ApplyFixToRepoTool
+
+    scope = make_scope()
+    g = make_guardrails(scope, asker=lambda prompt: True)
+    tool = ApplyFixToRepoTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+
+    calls = []
+
+    class FakeProc:
+        returncode = 0
+        stdout = "ok\n"
+        stderr = ""
+
+    def fake_subprocess_run(cmd, capture_output, text, timeout):
+        calls.append(cmd)
+        return FakeProc()
+
+    monkeypatch.setattr("security_agent.tools.remediation.subprocess.run", fake_subprocess_run)
+    result = tool.run(
+        g,
+        repo_path=str(tmp_path),
+        branch_name="fix/mfa",
+        patch_file="/tmp/fix.patch",
+        commit_message="Require MFA on admin login",
+    )
+    assert result.ok is True
+    assert len(calls) == 4  # checkout -b, apply, add, commit
+    assert calls[0][:4] == ["git", "-C", str(tmp_path), "checkout"]
+
+
+def test_apply_fix_to_repo_refuses_nonexistent_path(make_scope, make_guardrails):
+    from security_agent.tools.remediation import ApplyFixToRepoTool
+
+    scope = make_scope()
+    g = make_guardrails(scope, asker=lambda prompt: True)
+    tool = ApplyFixToRepoTool()
+    result = tool.run(
+        g,
+        repo_path="/definitely/not/a/real/path/anywhere",
+        branch_name="fix/x",
+        patch_file="/tmp/fix.patch",
+        commit_message="x",
+    )
+    assert result.ok is False
+    assert "not a local directory" in result.summary

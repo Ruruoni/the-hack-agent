@@ -116,6 +116,8 @@ itself writes after each run.
 | `hash_crack` (Hashcat) | **exploitation**, always, regardless of scope.yaml | E01, offline crack of an already-extracted hash file |
 | `active_directory_recon` (BloodHound collector) | active_scanning | E01, read-only AD relationship mapping |
 | `phishing_simulation_launch` (GoPhish) | **exploitation**, always, regardless of scope.yaml | E01, launches a pre-built/reviewed campaign only |
+| `propose_fix` | passive_recon (drafts only, touches nothing) | Drafts a reviewable patch/config-snippet for a confirmed finding |
+| `apply_fix_to_repo` (git) | **any_write_to_target**, always, regardless of scope.yaml | Applies a drafted fix to a LOCAL repo clone (branch+commit, never pushes) |
 
 All of the above are optional external dependencies — a missing binary
 makes that one tool refuse with a clear message, nothing is vendored
@@ -189,6 +191,30 @@ scope the action the way `credential_test` scopes Hydra (one account,
 25 candidates, hardcoded exploitation gate) — not a default to add by
 widening an existing tool's generality.
 
+## Fix generation (the actual point, for most real-world use)
+
+Finding a vulnerability isn't the deliverable by itself — `propose_fix`
+runs right after every finding with a known, demonstrable fix (the
+system prompt in `loop.py` calls for it automatically) and drafts a
+reviewable patch or config/IaC snippet to `reports/fixes/*.md`. It
+needs no approval, because it never touches the target — it only
+writes a markdown file describing the fix, the same way the run report
+itself gets written without a prompt.
+
+This matches how independent security research/bug-bounty work
+actually proceeds: find it, report it with a concrete fix
+recommendation attached, relay both to the system owner through
+whatever channel the engagement uses (a bug-bounty platform, a direct
+report). Whether the owner then separately engages the operator to
+*implement* the fix is a business decision made entirely outside this
+agent — the agent never assumes it, and `apply_fix_to_repo` (which
+actually branches/applies/commits a fix on a local git repo) stays
+locked behind the unconditional `any_write_to_target` approval gate for
+exactly that later, separate moment — never a default next step after
+`propose_fix`. It never pushes to a remote or opens a PR either; that
+stays an explicit human action even once a fix has been applied
+locally.
+
 ## Self-growth, safely
 
 The agent doesn't rewrite its own code unsupervised. Growth happens two ways:
@@ -214,7 +240,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-99 tests covering `guardrails.py` (scope/budget/approval enforcement —
+105 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted

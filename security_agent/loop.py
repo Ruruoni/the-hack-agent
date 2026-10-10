@@ -83,14 +83,27 @@ sql_injection_test with dump=True) will themselves prompt for approval. \
 Propose the minimal action that would confirm a finding, not the most \
 thorough one.
 
+For every confirmed finding that has a known, demonstrable fix, call \
+propose_fix right after reporting it — it only drafts a reviewable \
+patch/config-snippet file, it never touches the target, so it needs no \
+approval and you should not hesitate to use it. This is the agent's \
+actual deliverable for the person running it: a finding plus a \
+concrete, reviewable recommendation, which they relay to the system \
+owner themselves (e.g. as part of a bug-bounty report) — never call \
+apply_fix_to_repo unless the human operator has explicitly asked you to \
+apply a specific fix to a specific local repository they control; it is \
+not a next step you take on your own after propose_fix, and it will \
+block on approval regardless.
+
 After using the tools available to you, summarize findings using \
 playbooks/b01's reporting template: title, OWASP/category, evidence, \
 severity (Critical/High/Medium/Low/Info), breach macro-pattern, MITRE \
 ATT&CK tactic/technique, NIST CSF 2.0 function.category, ISO 27001:2022 \
 Annex A clause, CIS Control v8 (number + Implementation Group), PCI DSS \
-v4.0 requirement (or "not applicable" if no CHD/CDE in scope), and \
-concrete remediation. When you are done, or when no more tool calls are \
-useful, reply with a final plain-text summary and no further tool calls.
+v4.0 requirement (or "not applicable" if no CHD/CDE in scope), and a \
+reference to the propose_fix draft you wrote for it. When you are done, \
+or when no more tool calls are useful, reply with a final plain-text \
+summary and no further tool calls.
 
 {knowledge}
 """

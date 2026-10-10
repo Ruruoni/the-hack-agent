@@ -215,6 +215,18 @@ def test_approval_gate_denies_when_asker_says_no(scope):
         gate.require("exploitation", "a gated action")
 
 
+def test_exploitation_and_write_approval_cannot_be_removed_via_scope_yaml(make_scope):
+    # Regression test: ALWAYS_REQUIRE_APPROVAL must hold even when
+    # require_human_approval_for is edited to NOT list these categories
+    # -- a config file must never be able to silently disable the
+    # approval gate for the two hardcoded-gated categories.
+    s = make_scope(require_human_approval_for=[])  # deliberately empty
+    assert s.needs_human_approval("exploitation") is True
+    assert s.needs_human_approval("any_write_to_target") is True
+    # Anything else genuinely stays ungated unless explicitly listed.
+    assert s.needs_human_approval("passive_recon") is False
+
+
 def test_approval_gate_auto_denies_when_non_interactive(scope):
     gate = ApprovalGate(scope, auto_deny=True)
     with pytest.raises(ApprovalRequired):

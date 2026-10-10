@@ -16,6 +16,7 @@ from .osint import EmailHarvestTool, UsernameOsintTool
 from .packet_capture import PacketCaptureTool
 from .phishing_simulation import PhishingSimulationTool
 from .recon import HttpProbeTool, PortScanTool, SubdomainEnumTool
+from .remediation import ApplyFixToRepoTool, ProposeFixTool
 from .sast import SastScanTool, SecretScanTool
 from .smart_contract import SmartContractScanTool
 from .tls import TlsScanTool
@@ -49,6 +50,9 @@ def build_default_registry() -> ToolRegistry:
         CredentialTestTool,  # Hydra, <=25 candidates against one named account
         HashCrackTool,  # Hashcat, offline crack of an already-extracted hash file
         PhishingSimulationTool,  # GoPhish, launches a pre-built/pre-reviewed campaign only
+        # remediation (draft is free; applying is a write action, always gated)
+        ProposeFixTool,  # drafts a reviewable fix -- never touches the target
+        ApplyFixToRepoTool,  # applies a fix to a LOCAL repo clone -- always gated
         # local source / credentialed audit / subject-scoped OSINT (authorize_local_action)
         SastScanTool,
         SecretScanTool,

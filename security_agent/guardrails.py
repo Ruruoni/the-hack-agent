@@ -24,6 +24,16 @@ import yaml
 from . import config as cfg
 
 
+# Action categories that ALWAYS require human approval, regardless of
+# what scope.yaml's require_human_approval_for says. A config file can
+# add to the set of gated categories (e.g. adding "active_scanning" to
+# require approval on every active scan too) but can never remove these
+# -- they are not configuration, they're this agent's non-negotiable
+# floor. Any tool using authorize_local_exploitation_action or
+# authorize_write_action relies on this being unconditional.
+ALWAYS_REQUIRE_APPROVAL = frozenset({"exploitation", "any_write_to_target"})
+
+
 class ScopeViolation(RuntimeError):
     """Raised whenever an action would fall outside the authorized scope."""
 
@@ -137,7 +147,10 @@ class Scope:
             )
 
     def needs_human_approval(self, action_category: str) -> bool:
-        return action_category in self.require_human_approval_for
+        return (
+            action_category in ALWAYS_REQUIRE_APPROVAL
+            or action_category in self.require_human_approval_for
+        )
 
 
 class AuditLog:
@@ -296,6 +309,23 @@ class Guardrails:
         self.budget.note_tool_call()
         self.audit.record(
             "local_tool_call_authorized", tool=tool_name, path=path, description=description
+        )
+
+    def authorize_write_action(self, tool_name: str, path: str, description: str) -> None:
+        """For tools that write to a real codebase/system rather than
+        only reading it (e.g. applying a generated fix) — always forces
+        human approval under the `any_write_to_target` category,
+        unconditionally, the same way exploitation-hardcoded tools do.
+        Drafting/proposing a fix (writing a reviewable file locally,
+        nothing touches the target) does NOT need this -- use
+        `authorize_local_action` for that. This method is for the step
+        after review, where something actually changes.
+        """
+        self.budget.check_runtime()
+        self.approval.require("any_write_to_target", description)
+        self.budget.note_tool_call()
+        self.audit.record(
+            "write_action_authorized", tool=tool_name, path=path, description=description
         )
 
     def record_result(self, tool_name: str, target: str, result_summary: str) -> None:

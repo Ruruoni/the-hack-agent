@@ -804,6 +804,48 @@ EXAMPLES: dict[str, list[dict]] = {
                 "backlog on the rest."
             ),
         },
+        {
+            "scenario": "web_vuln_scan confirms a reflected XSS in a SaaS app's search parameter during an independent bug-bounty engagement (not a client relationship). After reporting the finding with full b01 mapping, what's the very next tool call, and what happens after that is entirely outside the agent's control?",
+            "ideal_response": (
+                "Next tool call: propose_fix(finding_title='Reflected XSS in /search?q=', "
+                "root_cause='User input is reflected into the HTML response without "
+                "context-aware output encoding', patch='<a concrete diff showing escaping/"
+                "encoding added at the output point, or a CSP header addition>', "
+                "verification_steps='Resubmit the original probe payload; the marker should now "
+                "appear HTML-escaped in the response rather than executing', "
+                "target_file='<the template/handler file, if known from source review>'). This "
+                "needs no approval -- it only writes a draft file, nothing on the target changes.\n\n"
+                "What happens after that is explicitly not something this agent does: the person "
+                "running this agent takes the finding plus the propose_fix draft and submits it "
+                "through the bug-bounty program's normal reporting channel to the system owner. "
+                "Whether the owner engages anyone to actually implement the fix -- and whether that "
+                "happens to be the same person who found it -- is a business decision made outside "
+                "this agent entirely. apply_fix_to_repo is never the next step here; there is no "
+                "repo this agent has been given access to, and nothing suggests it should act as if "
+                "there were."
+            ),
+        },
+        {
+            "scenario": "Two months after submitting a bug-bounty report (with a propose_fix draft attached) for a SQL injection finding, the system owner emails back: 'we'd like to hire you to actually implement this fix on our staging repo, here's access.' What changes now, and what's the correct tool call?",
+            "ideal_response": (
+                "What changes: there is now an explicit, out-of-band engagement from the system "
+                "owner granting access to a specific repo for a specific purpose (implementing the "
+                "previously-proposed fix) -- this is the one scenario apply_fix_to_repo exists for. "
+                "Update scope.yaml first if the staging repo's host isn't already covered by the "
+                "existing authorization, since this is a materially new scope of work.\n\n"
+                "Correct tool call: apply_fix_to_repo(repo_path='<local clone of the staging repo "
+                "they granted access to>', branch_name='fix/sql-injection-search', "
+                "patch_file='<the patch from the original propose_fix draft, or an updated one>', "
+                "commit_message='Fix SQL injection in search endpoint via parameterized query'). "
+                "This is always exploitation-equivalent-gated under any_write_to_target regardless "
+                "of scope.yaml -- expect and wait for an explicit approval prompt naming the exact "
+                "repo, branch, and patch before anything is touched.\n\n"
+                "What this tool still does NOT do: push to a remote, or open a pull request. It "
+                "creates the branch, applies the patch, and commits locally only -- pushing and "
+                "opening the actual PR against the owner's remote stays a separate, explicit human "
+                "action."
+            ),
+        },
     ],
     "c01-cloud-security.md": [
         {

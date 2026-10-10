@@ -127,7 +127,20 @@ ISO 27001:2022:   <Annex A clause>
 CIS Control v8:   <control # + IG>
 PCI DSS v4.0:     <requirement #, or "not applicable - no CHD/CDE in scope">
 Remediation:      <concrete fix>
+Fix draft:        <path to the propose_fix output for this finding, if one was drafted>
 ```
+
+For any finding with a known, demonstrable fix, call `propose_fix` (see
+`security_agent/tools/remediation.py`) right after reporting it and
+reference the resulting file here. That tool only drafts a reviewable
+patch/config-snippet — it never touches the target and needs no
+approval. This is the actual point of the report for most real-world
+use (e.g. bug bounty work): a finding plus a concrete, ready-to-relay
+fix recommendation, which the person running this agent passes to the
+system owner themselves. Applying a fix directly (`apply_fix_to_repo`)
+is a separate, always-approval-gated action for a different moment —
+only once a system owner has actually engaged the operator to implement
+it on a repo they control, never a default next step after drafting.
 
 ## Hard limit
 This playbook is for classification and reporting — it never authorizes
