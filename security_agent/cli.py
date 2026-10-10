@@ -31,6 +31,7 @@ OWASP_CATEGORIES = {
     "a08": "Software and Data Integrity Failures",
     "a09": "Security Logging and Monitoring Failures",
     "a10": "Server-Side Request Forgery (SSRF)",
+    "a11": "AI Agent / LLM Security (extension, not in OWASP's official Top 10)",
 }
 
 

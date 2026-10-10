@@ -1,3 +1,4 @@
+from .ai_redteam import AiAgentRedTeamTool
 from .base import Tool, ToolRegistry, ToolResult
 from .bruteforce import DirectoryBruteforceTool
 from .http_request import HttpRequestTool
@@ -23,6 +24,7 @@ def build_default_registry() -> ToolRegistry:
         DirectoryBruteforceTool,
         HttpRequestTool,
         SqlInjectionTestTool,  # detect-only unless dump=True (then exploitation, approval-gated)
+        AiAgentRedTeamTool,  # prompt-injection/jailbreak probes against an AI agent/LLM target
         # local source analysis
         SastScanTool,
         SecretScanTool,

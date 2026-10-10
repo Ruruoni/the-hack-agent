@@ -91,8 +91,13 @@ itself writes after each run.
 | `directory_bruteforce` (ffuf) | active_scanning | A01/A05 hidden paths |
 | `http_request` | active_scanning | manual probes: CORS, IDOR, SSRF setup |
 | `sql_injection_test` (sqlmap) | active_scanning, or **exploitation** if `dump=True` | A03 injection |
+| `ai_agent_redteam` (hackagent) | active_scanning | A11, prompt injection/jailbreak probes against AI agent/LLM targets |
 | `sast_scan` (semgrep) | local | source-level review |
 | `secret_scan` (gitleaks) | local | leaked credentials |
+
+`hackagent` (https://github.com/AISecurityLab/hackagent, Apache-2.0) is
+an optional dependency — `pip install hackagent` — not vendored into
+this repo; see `knowledge/playbooks/a11-ai-agent-llm-security.md`.
 
 ## Self-growth, safely
 
