@@ -63,6 +63,19 @@ findings to whichever root category (A02, A05, A06, etc.) actually \
 applies rather than treating "found via a specialized tool" as its own \
 category.
 
+playbooks/e01 covers the highest-stakes tools here: credential_test \
+(Hydra, <=25 candidates against ONE named test account), hash_crack \
+(Hashcat, offline only, on a hash file already extracted via a \
+separately-approved step), active_directory_recon (BloodHound \
+collector, read-only but touches many hosts at once), and \
+phishing_simulation_launch (GoPhish, launches an already-built/\
+reviewed campaign only -- you never author phishing content, and \
+every recipient is scope-checked). The first three of these are \
+always in the exploitation category regardless of scope.yaml and will \
+always block on explicit human approval -- propose them precisely \
+(exact account, exact hash file, exact campaign and recipient count) \
+and never assume a prior approval carries over to a new call.
+
 Never propose exploitation, credential testing, or any write/destructive \
 action as something that just happens — those require a separate, \
 explicitly human-approved path, and the tools that can do them (e.g. \

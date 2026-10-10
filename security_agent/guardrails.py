@@ -284,6 +284,20 @@ class Guardrails:
             "local_tool_call_authorized", tool=tool_name, path=path, description=description
         )
 
+    def authorize_local_exploitation_action(self, tool_name: str, path: str, description: str) -> None:
+        """Like `authorize_local_action`, but for local tools whose own
+        category is `exploitation` (e.g. offline hash cracking on data
+        already extracted via a separately-approved step) — the human
+        approval check runs *before* anything is logged as authorized,
+        so a denial never gets recorded as if the action had proceeded.
+        """
+        self.budget.check_runtime()
+        self.approval.require("exploitation", description)
+        self.budget.note_tool_call()
+        self.audit.record(
+            "local_tool_call_authorized", tool=tool_name, path=path, description=description
+        )
+
     def record_result(self, tool_name: str, target: str, result_summary: str) -> None:
         self.audit.record(
             "tool_call_result", tool=tool_name, target=target, summary=result_summary

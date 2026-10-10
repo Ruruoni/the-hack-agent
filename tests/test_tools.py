@@ -69,6 +69,12 @@ def test_default_registry_has_expected_tools():
         "traffic_capture",
         "binary_analysis",
         "deep_secret_scan",
+        "fast_port_scan",
+        "packet_capture",
+        "active_directory_recon",
+        "credential_test",
+        "hash_crack",
+        "phishing_simulation_launch",
     ):
         assert expected in names
 
@@ -329,3 +335,176 @@ def test_deep_secret_scan_uses_local_action(guardrails, monkeypatch):
     monkeypatch.setattr(tool, "_run_subprocess", lambda cmd, timeout=600: (0, "[]", ""))
     result = tool.run(guardrails, target="/local/repo")
     assert result.ok is True
+
+
+# -------------------------------------- credential testing / hash cracking / AD / GoPhish
+# All of these are `exploitation` category (or explicitly force the
+# approval gate even for a local action) -- every test here proves the
+# approval gate actually blocks/allows correctly, not just that the
+# tool runs.
+
+
+def test_credential_test_blocked_without_approval(make_scope, make_guardrails):
+    from security_agent.tools.credential_attacks import CredentialTestTool
+
+    scope = make_scope(
+        rules_of_engagement={"allow_exploitation": True},
+        require_human_approval_for=["exploitation"],
+    )
+    g = make_guardrails(scope, auto_deny_approvals=True)
+    tool = CredentialTestTool()
+    with pytest.raises(ApprovalRequired):
+        tool.run(
+            g, target="app.example-lab.local", service="ssh",
+            username="testuser", password_list=["pw1", "pw2"],
+        )
+
+
+def test_credential_test_runs_once_approved_and_caps_wordlist(monkeypatch, make_scope, make_guardrails):
+    from security_agent.tools.credential_attacks import CredentialTestTool
+
+    scope = make_scope(
+        rules_of_engagement={"allow_exploitation": True},
+        require_human_approval_for=["exploitation"],
+    )
+    g = make_guardrails(scope, asker=lambda prompt: True)
+    tool = CredentialTestTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+
+    captured = {}
+
+    def fake_run(cmd, timeout=300):
+        # Read the wordlist file now, while it still exists -- the real
+        # tool unlinks it in a `finally` right after this call returns.
+        wordlist_path = cmd[cmd.index("-P") + 1]
+        with open(wordlist_path) as f:
+            captured["wordlist_lines"] = f.readlines()
+        return (0, "1 valid password found", "")
+
+    monkeypatch.setattr(tool, "_run_subprocess", fake_run)
+    result = tool.run(
+        g, target="app.example-lab.local", service="ssh", username="testuser",
+        password_list=[f"pw{i}" for i in range(100)],  # way over the cap
+    )
+    assert result.ok is True
+    assert len(captured["wordlist_lines"]) <= 25
+
+
+def test_hash_crack_blocked_without_approval(make_scope, make_guardrails):
+    from security_agent.tools.credential_attacks import HashCrackTool
+
+    scope = make_scope(require_human_approval_for=["exploitation"])
+    g = make_guardrails(scope, auto_deny_approvals=True)
+    tool = HashCrackTool()
+    with pytest.raises(ApprovalRequired):
+        tool.run(g, hash_file="/local/hashes.txt", hash_mode="0", wordlist="/local/wordlist.txt")
+
+
+def test_hash_crack_runs_once_approved(monkeypatch, make_scope, make_guardrails):
+    from security_agent.tools.credential_attacks import HashCrackTool
+
+    scope = make_scope(require_human_approval_for=["exploitation"])
+    g = make_guardrails(scope, asker=lambda prompt: True)
+    tool = HashCrackTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+    monkeypatch.setattr(tool, "_run_subprocess", lambda cmd, timeout=150: (0, "cracked: 1 hash", ""))
+    result = tool.run(g, hash_file="/local/hashes.txt", hash_mode="0", wordlist="/local/wordlist.txt")
+    assert result.ok is True
+
+
+def test_hash_crack_denial_is_not_logged_as_authorized(make_scope, make_guardrails, tmp_path):
+    import json
+
+    from security_agent.guardrails import AuditLog, Guardrails
+    from security_agent.tools.credential_attacks import HashCrackTool
+
+    scope = make_scope(require_human_approval_for=["exploitation"])
+    audit = AuditLog(path=tmp_path / "audit.jsonl")
+    g = Guardrails(scope=scope, audit=audit, auto_deny_approvals=True)
+    tool = HashCrackTool()
+
+    with pytest.raises(ApprovalRequired):
+        tool.run(g, hash_file="/local/hashes.txt", hash_mode="0", wordlist="/local/wordlist.txt")
+
+    # The denial happens before anything is ever written to the audit
+    # log -- the file not existing at all is itself proof of that.
+    if audit.path.exists():
+        events = [json.loads(line)["event"] for line in audit.path.read_text().strip().splitlines()]
+        assert "local_tool_call_authorized" not in events
+    else:
+        assert not audit.path.exists()
+
+
+def test_active_directory_recon_is_network_target_and_scope_checked(guardrails):
+    from security_agent.tools.active_directory import ActiveDirectoryReconTool
+
+    tool = ActiveDirectoryReconTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(
+            guardrails, domain="corp.evil.com", domain_controller="dc.evil.com", username="svc-account"
+        )
+
+
+def test_fast_port_scan_refuses_out_of_scope(guardrails):
+    from security_agent.tools.fast_scan import FastPortScanTool
+
+    tool = FastPortScanTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(guardrails, target="evil.com")
+
+
+def test_packet_capture_uses_clean_target_not_raw_bpf_string(guardrails):
+    from security_agent.tools.packet_capture import PacketCaptureTool
+
+    tool = PacketCaptureTool()
+    # The scope check must run against the clean host/CIDR, not a BPF
+    # expression -- an out-of-scope target must still be refused even
+    # though it would otherwise be a syntactically valid filter.
+    with pytest.raises(ScopeViolation):
+        tool.run(guardrails, interface="eth0", target="evil.com")
+
+
+def test_packet_capture_builds_correct_bpf_filter(monkeypatch, guardrails):
+    from security_agent.tools.packet_capture import PacketCaptureTool
+
+    tool = PacketCaptureTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+    captured = {}
+
+    def fake_run(cmd, timeout=60):
+        captured["cmd"] = cmd
+        return (0, "0 packets captured", "")
+
+    monkeypatch.setattr(tool, "_run_subprocess", fake_run)
+    tool.run(guardrails, interface="eth0", target="10.10.10.5", duration_seconds=10)
+    assert "host 10.10.10.5" in captured["cmd"]
+
+
+def test_phishing_simulation_refuses_out_of_scope_recipient(guardrails):
+    from security_agent.tools.phishing_simulation import PhishingSimulationTool
+
+    tool = PhishingSimulationTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(
+            guardrails,
+            gophish_api_url="https://gophish.example-lab.local",
+            gophish_api_key="fake-key",
+            campaign_id=1,
+            recipient_emails=["employee@evil-external-domain.com"],
+        )
+
+
+def test_phishing_simulation_blocked_without_approval(make_scope, make_guardrails):
+    from security_agent.tools.phishing_simulation import PhishingSimulationTool
+
+    scope = make_scope(require_human_approval_for=["exploitation"])
+    g = make_guardrails(scope, auto_deny_approvals=True)
+    tool = PhishingSimulationTool()
+    with pytest.raises(ApprovalRequired):
+        tool.run(
+            g,
+            gophish_api_url="https://gophish.example-lab.local",
+            gophish_api_key="fake-key",
+            campaign_id=1,
+            recipient_emails=["employee@app.example-lab.local"],
+        )

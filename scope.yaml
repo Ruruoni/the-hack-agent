@@ -51,8 +51,23 @@ budgets:
 
 # Anything in this list always requires an explicit human "approve" before
 # the agent executes it, even if rules_of_engagement allows the category.
+#
+# The three categories tools actually declare (and that guardrails.py
+# checks) are: passive_recon, active_scanning, exploitation. Add any of
+# those here to force an approval prompt before EVERY call in that
+# category -- e.g. adding "active_scanning" means every active_scanning
+# tool call blocks on approval, not just exploitation-tier ones.
+#
+# credential_test, hash_crack, and phishing_simulation_launch
+# (security_agent/tools/credential_attacks.py and
+# phishing_simulation.py) are always `exploitation` in code regardless
+# of what's listed here -- they cannot be made to skip the approval
+# gate by removing "exploitation" from this list.
+#
+# self_modification_pr and any_write_to_target are illustrative labels
+# only -- no tool currently declares those exact category strings, so
+# listing them here has no effect yet. Self-growth PRs are instead
+# gated by CODEOWNERS (see repo root) requiring human review on
+# scope.yaml/guardrails.py changes specifically.
 require_human_approval_for:
   - exploitation
-  - any_write_to_target
-  - credential_testing
-  - self_modification_pr

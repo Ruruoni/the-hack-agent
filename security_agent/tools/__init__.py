@@ -1,3 +1,4 @@
+from .active_directory import ActiveDirectoryReconTool
 from .ai_redteam import AiAgentRedTeamTool
 from .api_fuzz import ApiFuzzTool
 from .base import Tool, ToolRegistry, ToolResult
@@ -5,11 +6,15 @@ from .binary_analysis import BinaryAnalysisTool
 from .bruteforce import DirectoryBruteforceTool
 from .cloud_posture import CloudPostureScanTool
 from .container_security import ContainerImageScanTool, K8sLiveScanTool
+from .credential_attacks import CredentialTestTool, HashCrackTool
 from .deep_secrets import DeepSecretScanTool
+from .fast_scan import FastPortScanTool
 from .http_request import HttpRequestTool
 from .injection import SqlInjectionTestTool
 from .jwt_analysis import JwtAnalyzeTool
 from .osint import EmailHarvestTool, UsernameOsintTool
+from .packet_capture import PacketCaptureTool
+from .phishing_simulation import PhishingSimulationTool
 from .recon import HttpProbeTool, PortScanTool, SubdomainEnumTool
 from .sast import SastScanTool, SecretScanTool
 from .smart_contract import SmartContractScanTool
@@ -23,11 +28,13 @@ def build_default_registry() -> ToolRegistry:
     for tool_cls in (
         # passive recon
         PortScanTool,
+        FastPortScanTool,  # RustScan, full-range alternative to port_scan
         SubdomainEnumTool,
         HttpProbeTool,
         TlsScanTool,
         JwtAnalyzeTool,
         EmailHarvestTool,  # domain -> emails/subdomains from public sources
+        PacketCaptureTool,  # bounded tcpdump capture on a local interface
         # active scanning
         WebVulnScanTool,
         DirectoryBruteforceTool,
@@ -37,6 +44,11 @@ def build_default_registry() -> ToolRegistry:
         K8sLiveScanTool,  # live cluster network endpoint
         ApiFuzzTool,  # schema-driven API fuzzing
         TrafficCaptureTool,  # bounded reverse-proxy traffic capture
+        ActiveDirectoryReconTool,  # BloodHound collector, read-only AD relationship mapping
+        # exploitation (always human-approval-gated regardless of scope.yaml)
+        CredentialTestTool,  # Hydra, <=25 candidates against one named account
+        HashCrackTool,  # Hashcat, offline crack of an already-extracted hash file
+        PhishingSimulationTool,  # GoPhish, launches a pre-built/pre-reviewed campaign only
         # local source / credentialed audit / subject-scoped OSINT (authorize_local_action)
         SastScanTool,
         SecretScanTool,

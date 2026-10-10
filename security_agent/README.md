@@ -110,6 +110,12 @@ itself writes after each run.
 | `traffic_capture` (mitmproxy) | active_scanning | D02, bounded reverse-proxy traffic capture |
 | `binary_analysis` (Ghidra headless) | local (binary/firmware triage) | D02, static triage of a local binary |
 | `deep_secret_scan` (TruffleHog) | local (source/history analysis) | D02, secret scanning with live verification |
+| `fast_port_scan` (RustScan) | passive_recon | E01, full-range port coverage |
+| `packet_capture` (tcpdump) | passive_recon | E01, bounded capture on a local interface |
+| `credential_test` (Hydra) | **exploitation**, always, regardless of scope.yaml | E01, <=25 candidates vs. ONE named account |
+| `hash_crack` (Hashcat) | **exploitation**, always, regardless of scope.yaml | E01, offline crack of an already-extracted hash file |
+| `active_directory_recon` (BloodHound collector) | active_scanning | E01, read-only AD relationship mapping |
+| `phishing_simulation_launch` (GoPhish) | **exploitation**, always, regardless of scope.yaml | E01, launches a pre-built/reviewed campaign only |
 
 All of the above are optional external dependencies — a missing binary
 makes that one tool refuse with a clear message, nothing is vendored
@@ -120,29 +126,68 @@ AGPL-3.0), Schemathesis (schemathesis/schemathesis, MIT), theHarvester
 (laramies/theHarvester, GPL-3.0), Sherlock (sherlock-project/sherlock,
 MIT), mitmproxy (mitmproxy/mitmproxy, MIT), Ghidra
 (NationalSecurityAgency/ghidra, Apache-2.0), TruffleHog
-(trufflesecurity/trufflehog, AGPL-3.0). See
-`knowledge/playbooks/a11-*.md`, `c01-*.md` through `c04-*.md`, and
-`d01-*.md`/`d02-*.md` for how each is used.
+(trufflesecurity/trufflehog, AGPL-3.0), RustScan (RustScan/RustScan,
+MIT), Hydra (van-hauser/thc-hydra, AGPL-3.0), Hashcat
+(hashcat/hashcat, MIT), BloodHound.py (dirkjanm/BloodHound.py, MIT),
+GoPhish (gophish/gophish, MIT). See `knowledge/playbooks/a11-*.md`,
+`c01-*.md` through `c04-*.md`, `d01-*.md`/`d02-*.md`, and `e01-*.md`
+for how each is used.
 
 ### Deliberately not wrapped
 
-Live-exploitation and credential-cracking frameworks — Metasploit,
-Hydra, Medusa, Hashcat, John the Ripper, Mimikatz, BeEF, RouterSploit,
-Commix, and wireless-attack suites (Aircrack-ng, Wifite, Reaver,
-hcxdumptool) — are not wrapped as auto-invokable tools here, and
-neither are "menu" aggregator repos that bundle dozens of tools under
-one installer (`Z4nzu/hackingtool`, `Manisso/fsociety` — both reviewed
-and declined; the former explicitly catalogs DDoS and phishing tool
-categories, the latter bundles brute-forcers and post-exploitation
-tooling). The gap between "confirm a vulnerability with one minimal
-PoC" (what every exploitation-category tool here does) and "run a
-general-purpose exploitation/credential-cracking framework" is large
-enough that wrapping the latter for autonomous use would meaningfully
-change this agent's risk profile, not just extend its coverage. These
-remain human-operated tools outside the agent's tool registry. If you
-want one wrapped with appropriately heavy gating for a specific,
-narrow use case, that is a deliberate design decision to make
-explicitly, not a default to add by habit.
+Three tools here (`credential_test`, `hash_crack`,
+`phishing_simulation_launch`) carry a hardcoded `exploitation` action
+category that cannot be removed by editing scope.yaml — they always
+block on explicit human approval, named precisely, every single call.
+That is this repo's actual answer to "ask for permission before using
+powerful tools": the gate already exists (`require_human_approval_for`
++ `guardrails.py`'s `ApprovalGate`), and every new tool added here
+either uses it or, for `credential_test`/`hash_crack`/
+`phishing_simulation_launch` specifically, cannot bypass it at all.
+
+What a permission prompt does *not* fix is a tool whose single
+approved action can itself cascade into effectively unbounded further
+compromise — that's a different problem than "did a human say yes."
+These remain out of the tool registry regardless of gating:
+
+- **Full exploitation frameworks** (Metasploit, Commix, RouterSploit):
+  built to go from "confirm a bug" to "I have a shell" and keep going.
+  This repo's design is "confirm with one minimal, stop-here action"
+  (see how `sql_injection_test(dump=True)` only ever pulls one row) —
+  a framework's entire purpose is to not stop there.
+- **Post-compromise lateral-movement/credential-dumping toolkits**
+  (Mimikatz, Rubeus, Certipy, NetExec/CrackMapExec, Impacket's
+  lateral-movement scripts such as secretsdump.py/psexec.py, Pacu):
+  these assume an existing foothold and use it to escalate to full
+  domain or cloud-account control. One approval here doesn't approve
+  "check one thing," it approves "now own the environment" — `e01`'s
+  playbook makes the same point about `active_directory_recon`
+  specifically: map the attack path, never walk it.
+- **BeEF**: requires hooking a real, unwitting person's browser —
+  running exploit code against an actual human, not infrastructure.
+- **Shared-medium/broadcast techniques** (Ettercap, Bettercap,
+  wireless-attack suites — Aircrack-ng, Wifite, Reaver, Kismet,
+  hcxdumptool): ARP spoofing and wireless deauth can affect devices
+  beyond the named target by how the medium works, and no radio
+  hardware exists in a sandboxed runner to use these anyway.
+- **Masscan**: its own well-documented failure mode is accidentally
+  flooding a network at high packet rates; `fast_port_scan` (RustScan)
+  covers the "faster than nmap" need without that risk profile.
+- **DDoS and phishing-*attack*** tooling (as distinct from
+  `phishing_simulation_launch`'s pre-reviewed-campaign-only design):
+  not built here under any approval framing — this is a hard line,
+  not a configurable one.
+- **"Menu" aggregator repos** that bundle dozens of tools under one
+  installer (`Z4nzu/hackingtool`, `Manisso/fsociety` — both cloned and
+  reviewed, not just skipped on name; the former explicitly catalogs
+  DDoS and phishing-attack categories, the latter bundles brute-forcers
+  and post-exploitation tooling alongside legitimate recon tools).
+
+If you want one of these wrapped for a specific, narrow, well-bounded
+use case, that's a deliberate design decision to make explicitly —
+scope the action the way `credential_test` scopes Hydra (one account,
+25 candidates, hardcoded exploitation gate) — not a default to add by
+widening an existing tool's generality.
 
 ## Self-growth, safely
 
@@ -169,7 +214,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-88 tests covering `guardrails.py` (scope/budget/approval enforcement —
+99 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted
