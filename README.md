@@ -4,8 +4,13 @@ An authorization-gated, model-agnostic, self-growing security testing
 agent. Every action is checked in code against `scope.yaml` before it
 runs — the model proposes, the guardrails dispose.
 
+It ships pre-equipped with a full OWASP Top 10 (2021) testing
+methodology (`knowledge/playbooks/`) and the tools to act on it — plug
+in any model and it's ready on the first run, no training step.
+
 See [`security_agent/README.md`](security_agent/README.md) for setup,
-usage, and how the self-growth / eval-gate loop works.
+usage, the built-in OWASP playbooks, and how the self-growth / eval-gate
+loop works.
 
 ## Quick start
 
@@ -16,7 +21,8 @@ usage, and how the self-growth / eval-gate loop works.
 3. ```bash
    pip install -r security_agent/requirements.txt
    python -m security_agent.cli check-scope
-   python -m security_agent.cli run "Enumerate subdomains of example-lab.local and summarize findings."
+   python -m security_agent.cli owasp-scan example-lab.local   # full OWASP Top 10 sweep
+   python -m security_agent.cli list-playbooks                 # see what's loaded
    ```
 
 ## Layout
@@ -24,7 +30,8 @@ usage, and how the self-growth / eval-gate loop works.
 ```
 scope.yaml              # human-owned authorization boundary
 security_agent/         # guardrails, LLM providers, tools, agent loop, CLI
-knowledge/              # growth memory — notes written after each run
+knowledge/playbooks/    # built-in OWASP Top 10 methodology (curated, always loaded)
+knowledge/*.md          # growth memory — notes the agent writes after each run
 reports/                # per-run markdown reports + audit.jsonl (gitignored)
 evals/                  # regression gate — score agent changes before merging
 CODEOWNERS              # protects scope.yaml / guardrails.py from unreviewed changes

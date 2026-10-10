@@ -27,14 +27,28 @@ enforced by `scope.yaml` and `guardrails.py` — not by trusting the model.
 3. Install whichever external tools you want available (all optional — a
    missing binary just makes that one tool refuse with a clear message):
    `nmap`, `subfinder`, `httpx` (projectdiscovery), `nuclei`, `semgrep`,
-   `gitleaks`.
+   `gitleaks`, `ffuf`, `testssl.sh` (or `sslscan`), `sqlmap`.
+
+That's it — no training step, no fine-tuning. The moment `scope.yaml` is
+authorized and a model is wired up, the agent already has the full OWASP
+Top 10 methodology loaded (see **Built-in OWASP knowledge** below) and
+every tool needed to act on it.
 
 ## Running
 
 ```bash
 pip install -r security_agent/requirements.txt
 python -m security_agent.cli check-scope
+
+# Free-form objective
 python -m security_agent.cli run "Enumerate subdomains of example-lab.local, probe which are alive, and run a safe web vuln scan on each."
+
+# Ready-made OWASP Top 10 assessment, full or one category
+python -m security_agent.cli owasp-scan juice.example-lab.local
+python -m security_agent.cli owasp-scan juice.example-lab.local --category a03
+
+# See what methodology is loaded
+python -m security_agent.cli list-playbooks
 ```
 
 Every run:
@@ -47,6 +61,38 @@ Every run:
   `reports/audit.jsonl`.
 - Writes a short note to `knowledge/` that's fed back in as context on the
   next run — the "self-growth" memory.
+
+## Built-in OWASP knowledge
+
+`knowledge/playbooks/` ships with a curated, human-written methodology
+covering every OWASP Top 10 (2021) category — `00-methodology.md` sets
+the phase order (scope confirmation → passive recon → mapping →
+vulnerability ID → gated exploitation → reporting); `a01` through `a10`
+give basic/intermediate/advanced steps, example commands, and which tool
+to use, for that category. `memory.py` loads all of it, in full, into the
+system prompt every run (`KnowledgeBase.load_playbooks()`), so a freshly
+swapped-in model is already working from this methodology on its very
+first run — nothing to fine-tune, nothing to teach it first.
+
+This is separate from the growth notes (next section): the playbooks are
+curated and reviewed like code; the growth notes are what the agent
+itself writes after each run.
+
+## Tool coverage
+
+| Tool | Category | Covers |
+|---|---|---|
+| `port_scan` (nmap) | passive_recon | service/version discovery |
+| `subdomain_enum` (subfinder) | passive_recon | attack-surface mapping |
+| `http_probe` (httpx) | passive_recon | alive hosts, tech fingerprint |
+| `tls_scan` (testssl.sh/sslscan) | passive_recon | A02 crypto/TLS config |
+| `jwt_analyze` (local) | passive_recon | A02/A07 JWT weaknesses |
+| `web_vuln_scan` (nuclei) | active_scanning | A05/A06, broad CVE/misconfig |
+| `directory_bruteforce` (ffuf) | active_scanning | A01/A05 hidden paths |
+| `http_request` | active_scanning | manual probes: CORS, IDOR, SSRF setup |
+| `sql_injection_test` (sqlmap) | active_scanning, or **exploitation** if `dump=True` | A03 injection |
+| `sast_scan` (semgrep) | local | source-level review |
+| `secret_scan` (gitleaks) | local | leaked credentials |
 
 ## Self-growth, safely
 
