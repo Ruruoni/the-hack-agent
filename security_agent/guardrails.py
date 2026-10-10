@@ -29,9 +29,15 @@ from . import config as cfg
 # add to the set of gated categories (e.g. adding "active_scanning" to
 # require approval on every active scan too) but can never remove these
 # -- they are not configuration, they're this agent's non-negotiable
-# floor. Any tool using authorize_local_exploitation_action or
-# authorize_write_action relies on this being unconditional.
-ALWAYS_REQUIRE_APPROVAL = frozenset({"exploitation", "any_write_to_target"})
+# floor. Any tool using authorize_local_exploitation_action,
+# authorize_write_action, or authorize_external_disclosure_action
+# relies on this being unconditional.
+#
+# external_disclosure covers anything that leaves the agent and reaches
+# a third party outside this session (an email, an API submission to a
+# bug-bounty platform) -- irreversible the moment it sends, regardless
+# of whether it touches the target's systems at all.
+ALWAYS_REQUIRE_APPROVAL = frozenset({"exploitation", "any_write_to_target", "external_disclosure"})
 
 
 class ScopeViolation(RuntimeError):
@@ -326,6 +332,25 @@ class Guardrails:
         self.budget.note_tool_call()
         self.audit.record(
             "write_action_authorized", tool=tool_name, path=path, description=description
+        )
+
+    def authorize_external_disclosure_action(self, tool_name: str, recipient: str, description: str) -> None:
+        """For tools that send something to a third party outside this
+        session -- an email, a bug-bounty platform submission. Always
+        forces human approval under `external_disclosure`,
+        unconditionally, same as exploitation/write-action tools.
+        Nothing about this method checks scope.yaml's allowed_domains --
+        callers that need the recipient restricted to an in-scope
+        organization (e.g. submit_bug_report) must check that
+        themselves before calling this, the same way
+        phishing_simulation_launch validates each recipient's domain
+        before authorize_tool_call.
+        """
+        self.budget.check_runtime()
+        self.approval.require("external_disclosure", description)
+        self.budget.note_tool_call()
+        self.audit.record(
+            "external_disclosure_authorized", tool=tool_name, recipient=recipient, description=description
         )
 
     def record_result(self, tool_name: str, target: str, result_summary: str) -> None:

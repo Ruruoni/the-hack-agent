@@ -77,6 +77,8 @@ def test_default_registry_has_expected_tools():
         "phishing_simulation_launch",
         "propose_fix",
         "apply_fix_to_repo",
+        "format_bug_report",
+        "submit_bug_report",
     ):
         assert expected in names
 
@@ -621,3 +623,120 @@ def test_apply_fix_to_repo_refuses_nonexistent_path(make_scope, make_guardrails)
     )
     assert result.ok is False
     assert "not a local directory" in result.summary
+
+
+# ------------------------------------------------------- format_bug_report / submit_bug_report
+
+
+def test_format_bug_report_needs_no_approval_and_writes_file(guardrails, monkeypatch, tmp_path):
+    from security_agent import config as cfg
+    from security_agent.tools.bug_report import FormatBugReportTool
+
+    monkeypatch.setattr(cfg, "REPORTS_DIR", tmp_path / "reports")
+    tool = FormatBugReportTool()
+    result = tool.run(
+        guardrails,
+        title="SQL Injection in /search",
+        severity="Critical",
+        summary="The q parameter is injectable.",
+        steps_to_reproduce="1. GET /search?q=1' OR '1'='1",
+        impact="Full database read access.",
+        suggested_fix="See attached propose_fix draft: parameterize the query.",
+        weakness="CWE-89",
+    )
+    assert result.ok is True
+    files = list((tmp_path / "reports" / "bug_reports").glob("*.md"))
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "SQL Injection in /search" in content
+    assert "CWE-89" in content
+    assert "## Steps to Reproduce" in content
+
+
+def test_submit_bug_report_refuses_out_of_scope_email_domain(guardrails, tmp_path):
+    from security_agent.tools.bug_report import SubmitBugReportTool
+
+    report_file = tmp_path / "report.md"
+    report_file.write_text("# a report")
+    tool = SubmitBugReportTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(
+            guardrails, report_file=str(report_file), method="email",
+            recipient_email="security@evil-external-domain.com",
+        )
+
+
+def test_submit_bug_report_blocked_without_approval_even_in_scope(make_scope, make_guardrails, tmp_path, monkeypatch):
+    from security_agent.tools.bug_report import SubmitBugReportTool
+
+    report_file = tmp_path / "report.md"
+    report_file.write_text("# a report")
+    scope = make_scope(require_human_approval_for=[])  # even with an empty list
+    g = make_guardrails(scope, auto_deny_approvals=True)
+    tool = SubmitBugReportTool()
+    monkeypatch.setenv("BUG_REPORT_SMTP_HOST", "smtp.example-lab.local")
+    monkeypatch.setenv("BUG_REPORT_FROM_EMAIL", "researcher@example-lab.local")
+    with pytest.raises(ApprovalRequired):
+        tool.run(
+            g, report_file=str(report_file), method="email",
+            recipient_email="security@app.example-lab.local",
+        )
+
+
+def test_submit_bug_report_sends_once_approved(monkeypatch, make_scope, make_guardrails, tmp_path):
+    from security_agent.tools.bug_report import SubmitBugReportTool
+
+    report_file = tmp_path / "report.md"
+    report_file.write_text("# a report")
+    scope = make_scope()
+    g = make_guardrails(scope, asker=lambda prompt: True)
+    tool = SubmitBugReportTool()
+    monkeypatch.setenv("BUG_REPORT_SMTP_HOST", "smtp.example-lab.local")
+    monkeypatch.setenv("BUG_REPORT_FROM_EMAIL", "researcher@example-lab.local")
+
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, host, timeout=30):
+            sent["host"] = host
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self):
+            pass
+
+        def send_message(self, msg):
+            sent["message"] = msg
+
+    monkeypatch.setattr("security_agent.tools.bug_report.smtplib.SMTP", FakeSMTP)
+    result = tool.run(
+        g, report_file=str(report_file), method="email",
+        recipient_email="security@app.example-lab.local",
+    )
+    assert result.ok is True
+    assert sent["host"] == "smtp.example-lab.local"
+    assert sent["message"]["To"] == "security@app.example-lab.local"
+
+
+def test_submit_bug_report_refuses_unknown_method(guardrails, tmp_path):
+    from security_agent.tools.bug_report import SubmitBugReportTool
+
+    report_file = tmp_path / "report.md"
+    report_file.write_text("# a report")
+    tool = SubmitBugReportTool()
+    result = tool.run(guardrails, report_file=str(report_file), method="carrier-pigeon")
+    assert result.ok is False
+    assert "Unknown method" in result.summary
+
+
+def test_submit_bug_report_refuses_missing_report_file(guardrails):
+    from security_agent.tools.bug_report import SubmitBugReportTool
+
+    tool = SubmitBugReportTool()
+    result = tool.run(guardrails, report_file="/definitely/not/a/real/file.md", method="email")
+    assert result.ok is False
+    assert "does not exist" in result.summary

@@ -128,19 +128,29 @@ CIS Control v8:   <control # + IG>
 PCI DSS v4.0:     <requirement #, or "not applicable - no CHD/CDE in scope">
 Remediation:      <concrete fix>
 Fix draft:        <path to the propose_fix output for this finding, if one was drafted>
+Bug report:       <path to the format_bug_report output for this finding, if one was drafted>
 ```
 
-For any finding with a known, demonstrable fix, call `propose_fix` (see
-`security_agent/tools/remediation.py`) right after reporting it and
-reference the resulting file here. That tool only drafts a reviewable
-patch/config-snippet — it never touches the target and needs no
-approval. This is the actual point of the report for most real-world
-use (e.g. bug bounty work): a finding plus a concrete, ready-to-relay
-fix recommendation, which the person running this agent passes to the
-system owner themselves. Applying a fix directly (`apply_fix_to_repo`)
-is a separate, always-approval-gated action for a different moment —
-only once a system owner has actually engaged the operator to implement
-it on a repo they control, never a default next step after drafting.
+For any finding with a known, demonstrable fix: call `propose_fix` (see
+`security_agent/tools/remediation.py`) right after reporting it, then
+`format_bug_report` (see `security_agent/tools/bug_report.py`) to turn
+the finding plus that fix into a standard, downloadable report file.
+Both only draft reviewable files — neither touches the target or sends
+anything anywhere, so neither needs approval. This pair is the actual
+point of the report for most real-world use (e.g. bug bounty work): a
+properly-formatted finding with a concrete, ready-to-relay fix
+recommendation attached, which the person running this agent passes to
+the system owner themselves through whatever channel their engagement
+uses.
+
+Two further actions exist for later, separate moments, and neither is
+ever a default next step after drafting: `apply_fix_to_repo` applies a
+fix to a local repo clone, only once a system owner has actually
+engaged the operator to implement it there; `submit_bug_report` sends
+the drafted report by email or API to the organization's own
+disclosure channel, only when the human operator has explicitly asked
+for that specific send. Both are always approval-gated, unconditionally,
+regardless of scope.yaml.
 
 ## Hard limit
 This playbook is for classification and reporting — it never authorizes

@@ -118,6 +118,8 @@ itself writes after each run.
 | `phishing_simulation_launch` (GoPhish) | **exploitation**, always, regardless of scope.yaml | E01, launches a pre-built/reviewed campaign only |
 | `propose_fix` | passive_recon (drafts only, touches nothing) | Drafts a reviewable patch/config-snippet for a confirmed finding |
 | `apply_fix_to_repo` (git) | **any_write_to_target**, always, regardless of scope.yaml | Applies a drafted fix to a LOCAL repo clone (branch+commit, never pushes) |
+| `format_bug_report` | passive_recon (drafts only, touches nothing) | Formats a finding + fix into a standard downloadable report file |
+| `submit_bug_report` (email/API) | **external_disclosure**, always, regardless of scope.yaml | Sends a drafted report to the org's own disclosure channel; recipient domain scope-checked first |
 
 All of the above are optional external dependencies — a missing binary
 makes that one tool refuse with a clear message, nothing is vendored
@@ -191,29 +193,50 @@ scope the action the way `credential_test` scopes Hydra (one account,
 25 candidates, hardcoded exploitation gate) — not a default to add by
 widening an existing tool's generality.
 
-## Fix generation (the actual point, for most real-world use)
+## Fix generation and reporting (the actual point, for most real-world use)
 
-Finding a vulnerability isn't the deliverable by itself — `propose_fix`
-runs right after every finding with a known, demonstrable fix (the
-system prompt in `loop.py` calls for it automatically) and drafts a
-reviewable patch or config/IaC snippet to `reports/fixes/*.md`. It
-needs no approval, because it never touches the target — it only
-writes a markdown file describing the fix, the same way the run report
-itself gets written without a prompt.
+Finding a vulnerability isn't the deliverable by itself. Two drafting
+tools run automatically (the system prompt in `loop.py` calls for both)
+right after every finding with a known, demonstrable fix:
 
-This matches how independent security research/bug-bounty work
-actually proceeds: find it, report it with a concrete fix
-recommendation attached, relay both to the system owner through
-whatever channel the engagement uses (a bug-bounty platform, a direct
-report). Whether the owner then separately engages the operator to
-*implement* the fix is a business decision made entirely outside this
-agent — the agent never assumes it, and `apply_fix_to_repo` (which
-actually branches/applies/commits a fix on a local git repo) stays
-locked behind the unconditional `any_write_to_target` approval gate for
-exactly that later, separate moment — never a default next step after
-`propose_fix`. It never pushes to a remote or opens a PR either; that
-stays an explicit human action even once a fix has been applied
-locally.
+1. **`propose_fix`** drafts a reviewable patch or config/IaC snippet to
+   `reports/fixes/*.md` — root cause, the fix itself, and how to verify
+   it.
+2. **`format_bug_report`** turns the finding plus that fix draft into a
+   standard, downloadable report file (`reports/bug_reports/*.md`,
+   HackerOne-style: Summary, Steps to Reproduce, Impact, Evidence,
+   Suggested Fix).
+
+Neither needs approval, because neither touches anything — they only
+write markdown files, the same way the run report itself gets written
+without a prompt. This pair is this agent's actual output for most
+real-world use: a finding, reported properly, with a concrete fix
+recommendation attached, ready to relay.
+
+Two further tools exist for the separate, later moments after that —
+never a default next step the agent takes on its own:
+
+- **`apply_fix_to_repo`** actually branches/applies/commits a fix on a
+  LOCAL git repo clone. Only for when a system owner has separately
+  engaged the operator to implement a fix on a repo they've given
+  access to. Locked behind the unconditional `any_write_to_target`
+  approval gate. Never pushes to a remote or opens a PR itself — that
+  stays an explicit human action even once applied locally.
+- **`submit_bug_report`** actually sends a drafted report — by email or
+  via a bug-bounty platform's API — to the organization's own
+  disclosure channel. Only for when the human operator has explicitly
+  asked for that specific send. Locked behind the unconditional
+  `external_disclosure` approval gate, and the recipient's domain is
+  checked against `scope.yaml`'s `allowed_domains` *before* the
+  approval prompt even fires — an explicit human instruction to send
+  cannot widen what was actually authorized for the engagement.
+
+By default, the person running this agent relays the drafted report
+themselves through whatever channel their engagement actually uses
+(a bug-bounty platform, a direct email, a client relationship) — that
+is still the expected path; `submit_bug_report` exists for when they
+specifically want the agent to send it instead, not as a replacement
+for that default.
 
 ## Self-growth, safely
 
@@ -240,7 +263,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-105 tests covering `guardrails.py` (scope/budget/approval enforcement —
+111 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted

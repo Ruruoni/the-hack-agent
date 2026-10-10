@@ -4,6 +4,7 @@ from .api_fuzz import ApiFuzzTool
 from .base import Tool, ToolRegistry, ToolResult
 from .binary_analysis import BinaryAnalysisTool
 from .bruteforce import DirectoryBruteforceTool
+from .bug_report import FormatBugReportTool, SubmitBugReportTool
 from .cloud_posture import CloudPostureScanTool
 from .container_security import ContainerImageScanTool, K8sLiveScanTool
 from .credential_attacks import CredentialTestTool, HashCrackTool
@@ -53,6 +54,9 @@ def build_default_registry() -> ToolRegistry:
         # remediation (draft is free; applying is a write action, always gated)
         ProposeFixTool,  # drafts a reviewable fix -- never touches the target
         ApplyFixToRepoTool,  # applies a fix to a LOCAL repo clone -- always gated
+        # bug reporting (formatting is free; sending is external, always gated)
+        FormatBugReportTool,  # drafts a standard report file -- never sent anywhere
+        SubmitBugReportTool,  # actually sends it (email/API) -- always gated
         # local source / credentialed audit / subject-scoped OSINT (authorize_local_action)
         SastScanTool,
         SecretScanTool,

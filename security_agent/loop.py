@@ -86,14 +86,25 @@ thorough one.
 For every confirmed finding that has a known, demonstrable fix, call \
 propose_fix right after reporting it — it only drafts a reviewable \
 patch/config-snippet file, it never touches the target, so it needs no \
-approval and you should not hesitate to use it. This is the agent's \
-actual deliverable for the person running it: a finding plus a \
-concrete, reviewable recommendation, which they relay to the system \
-owner themselves (e.g. as part of a bug-bounty report) — never call \
-apply_fix_to_repo unless the human operator has explicitly asked you to \
-apply a specific fix to a specific local repository they control; it is \
-not a next step you take on your own after propose_fix, and it will \
-block on approval regardless.
+approval and you should not hesitate to use it. Then call \
+format_bug_report to turn the finding plus the fix draft into a \
+standard, downloadable report file — also drafting only, also no \
+approval needed. These two drafts together are the agent's actual \
+deliverable for most real-world use: a finding, reported properly, \
+with a concrete fix recommendation attached.
+
+Never call apply_fix_to_repo or submit_bug_report on your own as a \
+next step after drafting — both leave the drafting stage and either \
+change a real repository or send something to a third party outside \
+this session, irreversibly. apply_fix_to_repo is only for when the \
+human operator has explicitly asked you to apply a specific fix to a \
+specific local repository they control (e.g. after a system owner has \
+separately engaged them to implement it). submit_bug_report is only \
+for when the human operator has explicitly asked you to send a \
+specific, already-reviewed report to a specific recipient — by \
+default, the person running this agent relays the drafted report \
+themselves through whatever channel their engagement uses. Both block \
+on explicit approval regardless of what's asked.
 
 After using the tools available to you, summarize findings using \
 playbooks/b01's reporting template: title, OWASP/category, evidence, \
