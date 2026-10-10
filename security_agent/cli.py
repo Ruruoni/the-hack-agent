@@ -144,6 +144,18 @@ def main(argv: list[str] | None = None) -> int:
     check_p = sub.add_parser("check-scope", help="Validate scope.yaml and exit.")
     check_p.add_argument("-v", "--verbose", action="store_true")
 
+    serve_p = sub.add_parser(
+        "serve",
+        help=(
+            "Launch the web command-center UI (same Guardrails/SecurityAgent/"
+            "LearningAgent underneath; approvals are resolved via browser click "
+            "instead of a terminal prompt). Requires security_agent/ui_requirements.txt."
+        ),
+    )
+    serve_p.add_argument("--host", default="127.0.0.1")
+    serve_p.add_argument("--port", type=int, default=8420)
+    serve_p.add_argument("-v", "--verbose", action="store_true")
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if getattr(args, "verbose", False) else logging.INFO,
@@ -188,6 +200,20 @@ def main(argv: list[str] | None = None) -> int:
             "yourself before promoting anything -- see "
             "security_agent/tools_staging/README.md."
         )
+        return 0
+
+    if args.command == "serve":
+        try:
+            from .ui.server import run_server
+        except ImportError as exc:
+            print(
+                "The web UI needs extra dependencies. Install them with:\n"
+                "    pip install -r security_agent/ui_requirements.txt\n"
+                f"(import error: {exc})",
+                file=sys.stderr,
+            )
+            return 1
+        run_server(host=args.host, port=args.port)
         return 0
 
     if args.command == "check-scope":

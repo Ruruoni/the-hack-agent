@@ -28,6 +28,8 @@ fine-tuning pipeline.
    python -m security_agent.cli owasp-scan example-lab.local   # full OWASP Top 10 sweep
    python -m security_agent.cli list-playbooks                 # see what's loaded
    python -m security_agent.cli learn https://github.com/org/tool  # self-learn, drafts only
+   pip install -r security_agent/ui_requirements.txt
+   python -m security_agent.cli serve                          # web command center, http://127.0.0.1:8420
    ```
 
 ## Layout
@@ -35,6 +37,7 @@ fine-tuning pipeline.
 ```
 scope.yaml                       # human-owned authorization boundary
 security_agent/                  # guardrails, LLM providers, tools, agent loop, CLI
+security_agent/ui/               # optional web command center (same guardrails underneath)
 security_agent/tools_staging/    # draft tools from `cli learn` -- never auto-registered
 knowledge/playbooks/             # built-in OWASP Top 10 methodology (curated, always loaded)
 knowledge/playbooks_staging/     # draft playbooks from `cli learn` -- never auto-loaded

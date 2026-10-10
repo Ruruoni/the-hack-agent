@@ -1,0 +1,6 @@
+# Only needed to run the web command-center UI (security_agent.ui.server).
+# The core agent (CLI, tools, guardrails) has no dependency on these.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+websockets>=12.0
+python-multipart>=0.0.9

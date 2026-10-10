@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any, Callable
 
 from .config import AgentConfig
 from .guardrails import ApprovalRequired, BudgetExceeded, Guardrails, ScopeViolation
@@ -136,6 +137,7 @@ class SecurityAgent:
         provider: LLMProvider | None = None,
         knowledge: KnowledgeBase | None = None,
         reports_dir=None,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.config = config or AgentConfig()
         # If the operator wants an interactive approval prompt (CLI default),
@@ -149,8 +151,21 @@ class SecurityAgent:
         self.knowledge = knowledge or KnowledgeBase()
         # Injectable so tests don't write into the real reports/ directory.
         self.reports_dir = reports_dir
+        # Optional observer, e.g. the UI server streaming live events to a
+        # browser over a WebSocket. Never required -- every call is
+        # try/except-wrapped so a broken UI connection can never break a run.
+        self._on_event = on_event
+
+    def _emit(self, event_type: str, **fields: Any) -> None:
+        if self._on_event is None:
+            return
+        try:
+            self._on_event({"type": event_type, **fields})
+        except Exception:  # noqa: BLE001
+            logger.exception("on_event callback raised -- ignoring, the run continues regardless.")
 
     def run(self, objective: str) -> RunReport:
+        self._emit("run_started", objective=objective)
         report = RunReport(objective)
         knowledge_text = self.knowledge.load_all() or "(none yet)"
         messages = [
@@ -173,6 +188,7 @@ class SecurityAgent:
                 if response.content:
                     report.add_finding(response.content.strip())
                     messages.append({"role": "assistant", "content": response.content})
+                    self._emit("model_message", content=response.content)
                 logger.info("Agent finished after %d iteration(s).", iteration + 1)
                 break
 
@@ -192,6 +208,7 @@ class SecurityAgent:
             )
 
             for tc in response.tool_calls:
+                self._emit("tool_call_proposed", tool=tc.name, arguments=tc.arguments)
                 result_text = self._execute_tool_call(tc, report)
                 messages.append(
                     {"role": "tool", "tool_call_id": tc.id, "name": tc.name, "content": result_text}
@@ -205,6 +222,7 @@ class SecurityAgent:
             f"Objective: {objective}\n\nSee {report_path.name} for full detail.\n\n"
             + "\n".join(f"- {f}" for f in report.findings),
         )
+        self._emit("run_finished", report_path=str(report_path), findings=report.findings)
         return report
 
     def _execute_tool_call(self, tc: ToolCall, report: RunReport) -> str:
@@ -219,17 +237,21 @@ class SecurityAgent:
         if tool is None:
             msg = f"Unknown tool '{tc.name}' — refusing."
             report.log_step(tc.name, target, msg, ok=False)
+            self._emit("tool_call_result", tool=tc.name, target=target, ok=False, summary=msg)
             return msg
 
         try:
             result = tool.run(self.guardrails, **tc.arguments)
             report.log_step(tool.name, target, result.summary, ok=result.ok)
+            self._emit("tool_call_result", tool=tool.name, target=target, ok=result.ok, summary=result.summary[:2000])
             return result.summary[:4000]
         except (ScopeViolation, ApprovalRequired, BudgetExceeded) as exc:
             logger.warning("Tool call refused: %s", exc)
             report.log_step(tool.name, target, f"REFUSED: {exc}", ok=False)
+            self._emit("tool_call_result", tool=tool.name, target=target, ok=False, summary=f"REFUSED: {exc}")
             return f"REFUSED: {exc}"
         except Exception as exc:  # noqa: BLE001
             logger.exception("Tool execution error")
             report.log_step(tool.name, target, f"ERROR: {exc}", ok=False)
+            self._emit("tool_call_result", tool=tool.name, target=target, ok=False, summary=f"ERROR: {exc}")
             return f"ERROR: {exc}"

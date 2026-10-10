@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>the-hack-agent — Command Center</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121820; --panel-2: #0f141b; --border: #1f2a35;
+    --text: #d7e2ea; --muted: #7c8da1; --accent: #35d08a; --accent-dim: #1f6b48;
+    --warn: #e0a84f; --danger: #e05f5f; --mono: "SF Mono", Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: 0.5px; color: var(--accent); }
+  .badge { padding: 3px 9px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.3px; }
+  .badge.ok { background: rgba(53,208,138,0.15); color: var(--accent); border: 1px solid var(--accent-dim); }
+  .badge.bad { background: rgba(224,95,95,0.15); color: var(--danger); border: 1px solid #5c2b2b; }
+  .badge.muted { background: rgba(124,141,161,0.1); color: var(--muted); border: 1px solid var(--border); }
+  .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 12px; padding: 12px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin: 0 0 10px; }
+  label { display: block; font-size: 11px; color: var(--muted); margin: 8px 0 3px; }
+  input, select, textarea { width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 6px 8px; border-radius: 4px; font-family: var(--mono); font-size: 12px; }
+  textarea { resize: vertical; min-height: 54px; }
+  button { background: var(--accent-dim); color: #eafff4; border: 1px solid var(--accent); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-family: var(--mono); font-size: 12px; margin-top: 8px; }
+  button:hover { background: var(--accent); color: #06130c; }
+  button.danger { background: #3a1f1f; border-color: var(--danger); color: #ffdede; }
+  button.danger:hover { background: var(--danger); color: #1a0505; }
+  button.ghost { background: transparent; border-color: var(--border); color: var(--muted); }
+  .console { background: #070a0d; border: 1px solid var(--border); border-radius: 6px; height: 460px; overflow-y: auto; padding: 10px; font-size: 12px; line-height: 1.5; }
+  .line { margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
+  .tag { display: inline-block; min-width: 108px; font-weight: 600; }
+  .tag.run_started { color: var(--accent); } .tag.model_message { color: #88b7ff; }
+  .tag.tool_call_proposed { color: var(--warn); } .tag.tool_call_result_ok { color: var(--accent); }
+  .tag.tool_call_result_fail { color: var(--danger); } .tag.run_finished { color: var(--accent); }
+  .tag.approval_requested { color: var(--warn); } .tag.approval_resolved { color: var(--muted); }
+  .tag.job_finished { color: #88b7ff; } .tag.system { color: var(--muted); }
+  .approval-card { background: rgba(224,168,79,0.08); border: 1px solid var(--warn); border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+  .approval-card .desc { margin: 6px 0; }
+  .approval-actions { display: flex; gap: 8px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .tabs button { margin-top: 0; background: var(--panel-2); border-color: var(--border); color: var(--muted); }
+  .tabs button.active { background: var(--accent-dim); border-color: var(--accent); color: #eafff4; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; }
+  td.link { color: var(--accent); cursor: pointer; }
+  td.link:hover { text-decoration: underline; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  pre.view { white-space: pre-wrap; background: #070a0d; padding: 10px; border-radius: 6px; border: 1px solid var(--border); max-height: 420px; overflow-y: auto; }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&#9635; THE-HACK-AGENT // COMMAND CENTER</h1>
+  <span id="scope-badge" class="badge muted">scope: loading…</span>
+  <span id="ws-badge" class="badge muted">live: connecting…</span>
+  <div class="spacer"></div>
+  <span class="hint" id="scope-hint"></span>
+</header>
+
+<main>
+  <div class="col">
+
+    <div class="panel">
+      <h2>Scope</h2>
+      <div id="scope-summary" class="hint">loading…</div>
+    </div>
+
+    <div class="panel">
+      <h2>New Run</h2>
+      <label>Mode</label>
+      <select id="run-mode" onchange="onRunModeChange()">
+        <option value="run">Free-form objective</option>
+        <option value="owasp-scan">OWASP scan (full or one category)</option>
+        <option value="specialized-scan">Specialized scan (cloud/container/web3/API)</option>
+      </select>
+
+      <div id="run-objective-field">
+        <label>Objective</label>
+        <textarea id="run-objective" placeholder="Enumerate subdomains of example-lab.local and check for exposed admin panels"></textarea>
+      </div>
+
+      <div id="run-target-field" style="display:none">
+        <label>Target</label>
+        <input id="run-target" placeholder="app.example-lab.local">
+        <label>Category</label>
+        <select id="run-category"></select>
+      </div>
+
+      <label><input type="checkbox" id="run-non-interactive" style="width:auto;display:inline;vertical-align:middle;margin-right:6px">Non-interactive (auto-deny gated actions)</label>
+      <button onclick="startRun()">&#9654; Start run</button>
+      <div class="hint">Refuses immediately if scope.yaml isn't authorized.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Self-Learn</h2>
+      <label>Source type</label>
+      <select id="learn-type">
+        <option value="repo">GitHub repo</option>
+        <option value="document">Local document</option>
+        <option value="url">Web URL</option>
+        <option value="text">Raw pasted text</option>
+      </select>
+      <label>Source</label>
+      <textarea id="learn-source" placeholder="https://github.com/org/tool"></textarea>
+      <label>Label (for raw text)</label>
+      <input id="learn-label" value="pasted-text">
+      <button onclick="startLearn()">&#9654; Learn</button>
+      <div class="hint">Read-only -- drafts to staging, never auto-registered. No approval needed.</div>
+      <button class="ghost" onclick="startConsolidate()">&#8635; Consolidate growth notes</button>
+    </div>
+
+  </div>
+
+  <div class="col">
+
+    <div class="panel">
+      <h2>Pending Approvals</h2>
+      <div id="approvals-list" class="hint">none pending</div>
+    </div>
+
+    <div class="panel">
+      <h2>Live Console</h2>
+      <div id="console" class="console"></div>
+      <button class="ghost" onclick="document.getElementById('console').innerHTML=''">Clear</button>
+    </div>
+
+    <div class="panel">
+      <div class="tabs">
+        <button id="tab-reports" class="active" onclick="switchTab('reports')">Reports</button>
+        <button id="tab-knowledge" onclick="switchTab('knowledge')">Knowledge</button>
+        <button id="tab-staging" onclick="switchTab('staging')">Staged Drafts</button>
+      </div>
+      <div id="tab-content"></div>
+      <pre id="file-view" class="view" style="display:none"></pre>
+    </div>
+
+  </div>
+</main>
+
+<script>
+const OWASP_CATEGORIES = {{OWASP_CATEGORIES_JSON}};
+const SPECIALIZED_CATEGORIES = {{SPECIALIZED_CATEGORIES_JSON}};
+let ws = null;
+let currentTab = 'reports';
+
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => setBadge('ws-badge', 'live: connected', 'ok');
+  ws.onclose = () => { setBadge('ws-badge', 'live: disconnected', 'bad'); setTimeout(connectWs, 2000); };
+  ws.onerror = () => setBadge('ws-badge', 'live: error', 'bad');
+  ws.onmessage = (ev) => handleEvent(JSON.parse(ev.data));
+}
+
+function setBadge(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'badge ' + cls;
+}
+
+function logLine(tagClass, tagText, text) {
+  const c = document.getElementById('console');
+  const div = document.createElement('div');
+  div.className = 'line';
+  div.innerHTML = `<span class="tag ${tagClass}">[${tagText}]</span> ${escapeHtml(text)}`;
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+function handleEvent(ev) {
+  switch (ev.type) {
+    case 'run_started':
+      logLine('run_started', 'RUN START', ev.objective);
+      break;
+    case 'model_message':
+      logLine('model_message', 'MODEL', ev.content);
+      break;
+    case 'tool_call_proposed':
+      logLine('tool_call_proposed', 'PROPOSED', `${ev.tool}(${JSON.stringify(ev.arguments)})`);
+      break;
+    case 'tool_call_result':
+      logLine(ev.ok ? 'tool_call_result_ok' : 'tool_call_result_fail', ev.ok ? 'OK' : 'REFUSED/ERR', `${ev.tool} -> ${ev.summary}`);
+      break;
+    case 'run_finished':
+      logLine('run_finished', 'RUN DONE', `report: ${ev.report_path}`);
+      refreshTab();
+      break;
+    case 'approval_requested':
+      logLine('approval_requested', 'APPROVAL?', `${ev.category}: ${ev.description}`);
+      addApprovalCard(ev);
+      break;
+    case 'approval_resolved':
+      logLine('approval_resolved', 'RESOLVED', `${ev.request_id} -> ${ev.approved ? 'APPROVED' : 'DENIED'}${ev.timed_out ? ' (timed out)' : ''}`);
+      removeApprovalCard(ev.request_id);
+      break;
+    case 'job_finished':
+      logLine('job_finished', 'JOB DONE', `${ev.status}: ${ev.summary}`);
+      refreshTab();
+      break;
+    default:
+      logLine('system', ev.type || 'EVENT', JSON.stringify(ev));
+  }
+}
+
+function addApprovalCard(ev) {
+  const list = document.getElementById('approvals-list');
+  if (list.dataset.empty !== 'false') { list.innerHTML = ''; list.dataset.empty = 'false'; }
+  const card = document.createElement('div');
+  card.className = 'approval-card';
+  card.id = 'approval-' + ev.request_id;
+  card.innerHTML = `
+    <div><strong>${escapeHtml(ev.category)}</strong></div>
+    <div class="desc">${escapeHtml(ev.description)}</div>
+    <div class="approval-actions">
+      <button onclick="resolveApproval('${ev.request_id}', true)">&#10003; Approve</button>
+      <button class="danger" onclick="resolveApproval('${ev.request_id}', false)">&#10007; Deny</button>
+    </div>`;
+  list.appendChild(card);
+}
+
+function removeApprovalCard(requestId) {
+  const el = document.getElementById('approval-' + requestId);
+  if (el) el.remove();
+  const list = document.getElementById('approvals-list');
+  if (!list.querySelector('.approval-card')) { list.dataset.empty = 'true'; list.innerHTML = 'none pending'; }
+}
+
+async function resolveApproval(requestId, approved) {
+  await fetch(`/api/approve/${requestId}`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({approved}),
+  });
+}
+
+function onRunModeChange() {
+  const mode = document.getElementById('run-mode').value;
+  const isFreeform = mode === 'run';
+  document.getElementById('run-objective-field').style.display = isFreeform ? '' : 'none';
+  document.getElementById('run-target-field').style.display = isFreeform ? 'none' : '';
+  const catSelect = document.getElementById('run-category');
+  catSelect.innerHTML = '';
+  const cats = mode === 'owasp-scan' ? OWASP_CATEGORIES : SPECIALIZED_CATEGORIES;
+  if (mode === 'owasp-scan') {
+    const opt = document.createElement('option'); opt.value = ''; opt.textContent = '(full sweep, all categories)';
+    catSelect.appendChild(opt);
+  }
+  for (const [key, name] of Object.entries(cats)) {
+    const opt = document.createElement('option'); opt.value = key; opt.textContent = `${key} — ${name}`;
+    catSelect.appendChild(opt);
+  }
+}
+
+async function startRun() {
+  const mode = document.getElementById('run-mode').value;
+  const body = {
+    mode,
+    objective: document.getElementById('run-objective').value,
+    target: document.getElementById('run-target').value,
+    category: document.getElementById('run-category').value || null,
+    non_interactive: document.getElementById('run-non-interactive').checked,
+  };
+  const resp = await fetch('/api/run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const data = await resp.json();
+  if (!resp.ok) { logLine('system', 'ERROR', data.detail || JSON.stringify(data)); return; }
+  logLine('system', 'JOB', `started run job ${data.job_id}`);
+}
+
+async function startLearn() {
+  const body = {
+    source: document.getElementById('learn-source').value,
+    type: document.getElementById('learn-type').value,
+    label: document.getElementById('learn-label').value,
+  };
+  const resp = await fetch('/api/learn', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const data = await resp.json();
+  logLine('system', 'JOB', `started learn job ${data.job_id}`);
+}
+
+async function startConsolidate() {
+  const resp = await fetch('/api/consolidate', {method: 'POST'});
+  const data = await resp.json();
+  logLine('system', 'JOB', `started consolidate job ${data.job_id}`);
+}
+
+async function loadScope() {
+  const resp = await fetch('/api/scope');
+  const s = await resp.json();
+  if (s.error) { setBadge('scope-badge', 'scope: error', 'bad'); document.getElementById('scope-summary').textContent = s.error; return; }
+  setBadge('scope-badge', s.authorized_ok ? 'scope: AUTHORIZED' : 'scope: NOT AUTHORIZED', s.authorized_ok ? 'ok' : 'bad');
+  document.getElementById('scope-summary').innerHTML = `
+    <div>by: ${escapeHtml(s.authorized_by || '(none)')}</div>
+    <div>domains: ${escapeHtml((s.allowed_domains || []).join(', ') || '(none)')}</div>
+    <div>cidrs: ${escapeHtml((s.allowed_cidrs || []).join(', ') || '(none)')}</div>
+    <div>exploitation: ${s.rules_of_engagement.allow_exploitation ? 'allowed (still approval-gated)' : 'disallowed'}</div>
+    <div>disclosure recipients configured: ${s.disclosure_recipients_configured}</div>`;
+}
+
+function switchTab(name) {
+  currentTab = name;
+  for (const t of ['reports', 'knowledge', 'staging']) {
+    document.getElementById('tab-' + t).className = (t === name) ? 'active' : '';
+  }
+  document.getElementById('file-view').style.display = 'none';
+  refreshTab();
+}
+
+async function refreshTab() {
+  const content = document.getElementById('tab-content');
+  if (currentTab === 'reports') {
+    const items = await (await fetch('/api/reports')).json();
+    content.innerHTML = renderTable(items, i => i.path, i => `viewReport('${i.path}')`);
+  } else if (currentTab === 'knowledge') {
+    const items = await (await fetch('/api/knowledge')).json();
+    content.innerHTML = renderTable(items, i => i.name, null);
+  } else {
+    const data = await (await fetch('/api/staging')).json();
+    const items = [...data.tools.map(n => ({path: 'tools_staging/' + n})), ...data.playbooks.map(n => ({path: 'playbooks_staging/' + n}))];
+    content.innerHTML = renderTable(items, i => i.path, null);
+  }
+}
+
+function renderTable(items, labelFn, clickFnName) {
+  if (!items.length) return '<div class="hint">(empty)</div>';
+  return '<table>' + items.map(i => `<tr><td class="${clickFnName ? 'link' : ''}" ${clickFnName ? `onclick="${clickFnName(i)}"` : ''}>${escapeHtml(labelFn(i))}</td></tr>`).join('') + '</table>';
+}
+
+async function viewReport(path) {
+  const resp = await fetch('/api/reports/' + path);
+  const text = await resp.text();
+  const view = document.getElementById('file-view');
+  view.textContent = text;
+  view.style.display = '';
+}
+
+onRunModeChange();
+connectWs();
+loadScope();
+refreshTab();
+setInterval(loadScope, 15000);
+</script>
+</body>
+</html>

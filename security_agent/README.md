@@ -62,6 +62,43 @@ Every run:
 - Writes a short note to `knowledge/` that's fed back in as context on the
   next run — the "self-growth" memory.
 
+## Command center UI
+
+A local web dashboard around the exact same `SecurityAgent` / `Guardrails`
+/ `LearningAgent` used by the CLI above — nothing about the safety model
+changes, only the stdin `y/N` prompt becomes a browser click:
+
+```bash
+pip install -r security_agent/ui_requirements.txt
+python -m security_agent.cli serve              # http://127.0.0.1:8420
+python -m security_agent.cli serve --host 0.0.0.0 --port 9000
+```
+
+What it gives you, all driven from the one page:
+- A live scope summary (authorized state, allowed targets, what's gated).
+- A "New Run" form for free-form objectives, `owasp-scan`, and
+  `specialized-scan` (categories populated from the real
+  `OWASP_CATEGORIES`/`SPECIALIZED_CATEGORIES` the CLI uses — not
+  duplicated by hand).
+- A "Self-Learn" form for repo/document/URL/text sources, plus
+  Consolidate.
+- A live console streaming every run event (tool proposed, tool result,
+  model message) over a WebSocket (`/ws`) as it happens.
+- A Pending Approvals panel: when a run hits a gated action, it blocks
+  there — same `ApprovalGate`, same hard-coded `ALWAYS_REQUIRE_APPROVAL`
+  floor that can't be configured away — until you click Approve/Deny
+  (auto-denies after 30 minutes of silence; never auto-approves).
+- Tabs to browse `reports/`, `knowledge/` growth notes, and staged
+  `tools_staging/`/`playbooks_staging/` drafts, all read-only.
+
+This is a single-operator local tool, not a multi-tenant service: it
+binds to `127.0.0.1` by default, has no auth, and keeps job/approval
+state in memory (restarting the server drops any run in progress, same
+as killing the CLI mid-run would). Don't bind `--host 0.0.0.0` on a
+network you don't trust. See `tests/test_ui.py` for the exact
+approval-blocking-then-resolving flow proven end to end against a
+scripted provider (no real LLM or network call).
+
 ## Built-in OWASP knowledge
 
 `knowledge/playbooks/` ships with a curated, human-written methodology
@@ -309,17 +346,21 @@ authorization.
 ## Tests
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt -r security_agent/ui_requirements.txt
 python -m pytest tests/ -v
 ```
 
-152 tests covering `guardrails.py` (scope/budget/approval enforcement —
+161 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
-growth-note loading, the CLI, and the full agent loop against a scripted
-fake provider. No GPU, API key, or network access needed — these are
-pure logic tests, separate from `evals/` (which needs a live model and
-real lab targets).
+growth-note loading, the CLI, the full agent loop against a scripted
+fake provider, and (`test_ui.py`) the command-center UI end to end —
+starting a run over HTTP, blocking a real background thread on a gated
+approval, resolving it via `POST /api/approve` instead of stdin, and
+confirming the finished report is visible through the read-only
+endpoints. No GPU, API key, or network access needed — these are pure
+logic tests, separate from `evals/` (which needs a live model and real
+lab targets).
 
 ## Extending
 
