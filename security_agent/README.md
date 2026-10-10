@@ -253,26 +253,38 @@ The agent doesn't rewrite its own code unsupervised. Growth happens three ways:
 1. **Knowledge growth** — `knowledge/*.md` notes accumulate automatically
    and get reviewed/pruned like any other file in PRs.
 2. **Self-learning (staging only)** — `security_agent/learning.py`'s
-   `LearningAgent` can read a GitHub repo or a local document and draft
-   a proposed new tool + playbook, entirely on its own, with no approval
-   gate:
+   `LearningAgent` can learn from four kinds of source, entirely on its
+   own, with no approval gate:
    ```bash
-   python -m security_agent.cli learn https://github.com/someorg/sometool
-   python -m security_agent.cli learn ./some-report.md --type document
+   python -m security_agent.cli learn https://github.com/someorg/sometool          # --type repo (default): drafts a tool + playbook
+   python -m security_agent.cli learn ./some-report.md --type document             # drafts a playbook note
+   python -m security_agent.cli learn https://example.com/writeup --type url       # fetches + strips HTML, drafts a playbook note
+   python -m security_agent.cli learn "some pasted attack pattern" --type text     # no fetch at all, drafts a playbook note
+   python -m security_agent.cli consolidate                                        # digests ALL past growth notes for recurring patterns
    ```
-   This needs no approval because it can't touch anything — it only
-   clones a repo read-only (never executes anything from it), reads
-   text, and writes draft files to `security_agent/tools_staging/` and
-   `knowledge/playbooks_staging/`. Nothing it writes is imported,
-   registered, or loaded by the running agent (`.py.draft`/`.md.draft`
-   extensions keep them out of both `tools/__init__.py` and
-   `KnowledgeBase.load_playbooks()`). It also applies the same risk
-   criteria as this README's "Deliberately not wrapped" section — but
-   that's advice to the reviewer, not a gate, so re-check it yourself;
-   see `security_agent/tools_staging/README.md` for the actual
-   promotion process (a normal PR, same CODEOWNERS/eval-gate review as
-   anything else). This only reads text — image/video analysis would
-   need multimodal support in `providers.py`, which isn't added yet.
+   None of this needs approval because none of it can touch anything —
+   `learn --type repo` clones read-only and never executes anything
+   from the repo; `--type url` only fetches and strips a page's own
+   `<script>`/`<style>` content before reading the text, it never runs
+   anything the page serves; `--type text` doesn't even reach the
+   network. `consolidate` reads back the accumulated `knowledge/*.md`
+   notes from every past run and `learn` call, and asks the model to
+   synthesize recurring patterns — the "digest everything learnt and
+   improve" step — rather than treating each note as an isolated event.
+   All four write draft files to `security_agent/tools_staging/` and/or
+   `knowledge/playbooks_staging/`. Nothing any of them write is
+   imported, registered, or loaded by the running agent
+   (`.py.draft`/`.md.draft` extensions keep them out of both
+   `tools/__init__.py` and `KnowledgeBase.load_playbooks()` — including
+   `consolidate`'s output, which only ever drafts a *suggested* addendum,
+   never edits a live playbook file). The repo flow also applies the
+   same risk criteria as this README's "Deliberately not wrapped"
+   section — but that's advice to the reviewer, not a gate, so re-check
+   it yourself; see `security_agent/tools_staging/README.md` for the
+   actual promotion process (a normal PR, same CODEOWNERS/eval-gate
+   review as anything else). All of this reads text only — image/video
+   analysis would need multimodal support in `providers.py`, which
+   isn't added yet.
 3. **Capability growth** — promoting a staged draft, or adding a new
    tool directly in `security_agent/tools/`, adjusting the prompt in
    `loop.py`, or loosening `scope.yaml`, is a normal pull request. Two
@@ -300,7 +312,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-137 tests covering `guardrails.py` (scope/budget/approval enforcement —
+147 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted

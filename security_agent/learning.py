@@ -1,7 +1,7 @@
-"""Self-learn: read a new repo or document, decide whether it's a fit,
-and draft a tool/playbook proposal for human review. Never executes
-anything from what it reads, never registers a draft into the live
-tool registry, never touches a network target.
+"""Self-learn: read a repo, a document, a URL, or raw pasted text,
+decide whether/what it's worth drafting, and stage a proposal for human
+review. Never executes anything from what it reads, never registers a
+draft into the live tool registry, never touches a network target.
 
 This is deliberately the one autonomous-sounding piece of this repo
 that's actually safe to let run with no approval gate: reading text and
@@ -10,20 +10,25 @@ it's been all session -- *acting* (running a tool against a target,
 applying a fix, sending a report) is gated; *learning* (reading,
 reasoning, drafting) is not, because it can't touch anything.
 
-Promotion of a draft into security_agent/tools/ is always a separate,
-deliberate human step -- the same PR + CODEOWNERS + eval-gate review
-every other tool in this repo went through. Nothing here shortcuts
-that.
+Promotion of a draft into security_agent/tools/ or knowledge/playbooks/
+is always a separate, deliberate human step -- the same PR + CODEOWNERS
++ eval-gate review every other tool/playbook in this repo went through.
+Nothing here shortcuts that -- including `consolidate()`, which only
+ever *drafts* a suggested playbook update, never edits a live playbook
+file directly.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+import httpx
 
 from . import config as cfg
 from .config import AgentConfig
@@ -33,12 +38,12 @@ from .providers import LLMProvider, build_provider
 
 # Mirrors security_agent/README.md's "Deliberately not wrapped" section
 # so the same judgment this session applied by hand gets applied
-# consistently to anything learn_from_repo looks at. Kept here as a
-# prompt fragment, not a strict allow/deny list -- the model still has
-# to reason about the specific repo, not just pattern-match a name.
+# consistently to anything learned from. Kept here as a prompt
+# fragment, not a strict allow/deny list -- the model still has to
+# reason about the specific source, not just pattern-match a name.
 RISK_CRITERIA = """\
-Decline (do not draft a tool) if the repository is, or primarily bundles:
-- A denial-of-service / stress-testing / flooding tool.
+Decline (do not draft a tool) if the source describes, or primarily is:
+- A denial-of-service / stress-testing / flooding tool or technique.
 - A phishing-attack kit (as opposed to an authorized phishing-SIMULATION
   platform like GoPhish, which only launches pre-reviewed campaigns).
 - A "menu"/aggregator that installs/launches dozens of other tools
@@ -56,16 +61,16 @@ Decline (do not draft a tool) if the repository is, or primarily bundles:
   the whole internet, or attacking targets without per-target
   authorization.
 
-Accept (draft a tool) if it's a single-purpose, scopeable tool --
-recon, a specific vulnerability class scanner, a local
-analysis/decoding utility, a credentialed audit of an account/asset you
-already control, or a narrowly-bounded confirmation step (like this
-repo's existing credential_test, capped at 25 candidates against one
-account) -- the same shape as every tool already in
-security_agent/tools/.
+Accept (draft a tool, or a playbook note) if it's a single-purpose,
+scopeable technique or tool -- recon, a specific vulnerability class,
+a local analysis/decoding utility, a credentialed audit of an
+account/asset you already control, or a narrowly-bounded confirmation
+step (like this repo's existing credential_test, capped at 25
+candidates against one account) -- the same shape as every tool
+already in security_agent/tools/.
 """
 
-DRAFT_PROMPT_TEMPLATE = """You are evaluating a GitHub repository for inclusion as a new tool \
+REPO_PROMPT_TEMPLATE = """You are evaluating a GitHub repository for inclusion as a new tool \
 in an authorization-gated security agent. Every existing tool in this \
 agent goes through guardrails.py before doing anything: a network-target \
 tool calls `guardrails.authorize_tool_call(name, target, category, \
@@ -76,17 +81,17 @@ description)` instead.
 
 {risk_criteria}
 
-Repository: {repo_url}
+Repository: {source}
 
 README and file listing (truncated):
 ---
-{repo_summary}
+{content}
 ---
 
 Respond with ONLY a JSON object, no markdown fences, no commentary:
 {{
   "decision": "accept" or "decline",
-  "reasoning": "<2-4 sentences explaining the decision, citing the specific repo content you saw>",
+  "reasoning": "<2-4 sentences explaining the decision, citing the specific content you saw>",
   "tool_name": "<snake_case tool name, only if accept>",
   "action_category": "<passive_recon|active_scanning|exploitation|local, only if accept>",
   "tool_code": "<complete Python source for a Tool subclass in this repo's style, only if accept -- see existing files in security_agent/tools/ for the exact pattern>",
@@ -94,11 +99,59 @@ Respond with ONLY a JSON object, no markdown fences, no commentary:
 }}
 """
 
+# Used for anything that's informational rather than code to wrap: a
+# document, a URL (an article, write-up, advisory, CTF solution), or
+# raw pasted text describing a hack pattern. Unlike the repo flow, this
+# never drafts executable tool code -- at most a playbook addendum
+# (text describing a technique and how to test/report it), since the
+# source itself usually isn't a tool to wrap, just knowledge to record.
+INFO_PROMPT_TEMPLATE = """Summarize the security-relevant content below concisely: what \
+technique, vulnerability pattern, or finding does it describe, and is \
+it the kind of reusable pattern worth adding a note to this security \
+agent's testing methodology (knowledge/playbooks/)?
+
+{risk_criteria}
+
+Source: {source}
+
+Content (truncated):
+---
+{content}
+---
+
+Respond with ONLY a JSON object, no markdown fences, no commentary:
+{{
+  "summary": "<2-5 sentence summary of what this source actually says>",
+  "worth_a_playbook_note": true or false,
+  "playbook_addendum": "<a short markdown section describing the pattern/technique and how to test for or recognize it, only if worth_a_playbook_note is true -- in the style of knowledge/playbooks/*.md>",
+  "suggested_playbook": "<which existing playbook file this would extend, e.g. 'a03-injection.md', or 'new' if it doesn't fit any existing one, only if worth_a_playbook_note is true>"
+}}
+"""
+
+CONSOLIDATE_PROMPT_TEMPLATE = """Below are recent growth notes this security agent has written to \
+itself -- summaries of past runs and past learn_from_* calls. Look \
+for recurring patterns, gaps, or concrete improvements worth making \
+to the testing methodology, not a restatement of each note individually.
+
+Notes:
+---
+{notes}
+---
+
+Respond with ONLY a JSON object, no markdown fences, no commentary:
+{{
+  "digest": "<a concise synthesis: what patterns recur, what gaps show up repeatedly, what would meaningfully improve future runs>",
+  "worth_a_playbook_update": true or false,
+  "playbook_addendum": "<a concrete, specific markdown addition to an existing playbook, only if worth_a_playbook_update is true -- not a generic restatement>",
+  "suggested_playbook": "<which existing playbook file this would extend, only if worth_a_playbook_update is true>"
+}}
+"""
+
 
 @dataclass
 class LearningReport:
     source: str
-    decision: str  # "accept" | "decline" | "error"
+    decision: str  # "accept" | "decline" | "summarized" | "error"
     reasoning: str
     staged_tool_path: Path | None = None
     staged_playbook_path: Path | None = None
@@ -122,18 +175,14 @@ def _clone_readonly(repo_url: str, timeout: int = 120) -> Path:
 
 
 def _summarize_repo(repo_dir: Path, max_chars: int = 15000) -> str:
-    """README + top-level file tree + a peek at a couple of likely-main
-    source files -- bounded, read-only, never executed.
-    """
+    """README + top-level file tree -- bounded, read-only, never executed."""
     parts: list[str] = []
-    total = 0
 
     for name in ("README.md", "README.rst", "README.txt", "README"):
         readme = repo_dir / name
         if readme.exists():
             text = readme.read_text(encoding="utf-8", errors="replace")
             parts.append(f"## {name}\n{text[:5000]}")
-            total += len(parts[-1])
             break
 
     tree_lines = []
@@ -143,12 +192,32 @@ def _summarize_repo(repo_dir: Path, max_chars: int = 15000) -> str:
         tree_lines.append(str(p.relative_to(repo_dir)))
         if len(tree_lines) > 200:
             break
-    tree_text = "## File tree\n" + "\n".join(tree_lines)
-    parts.append(tree_text)
-    total += len(tree_text)
+    parts.append("## File tree\n" + "\n".join(tree_lines))
 
-    joined = "\n\n".join(parts)
-    return joined[:max_chars]
+    return "\n\n".join(parts)[:max_chars]
+
+
+def _strip_html(html: str) -> str:
+    """Minimal, dependency-free HTML-to-text: drop script/style blocks
+    and tags, collapse whitespace. Imperfect but good enough for
+    extracting readable article/write-up text -- no rendering, no JS
+    execution, just text extraction from the fetched response body.
+    """
+    text = re.sub(r"<script.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<style.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _fetch_url_text(url: str, timeout: int = 30, max_bytes: int = 2_000_000) -> str:
+    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        resp = client.get(url, headers={"User-Agent": "the-hack-agent/learning"})
+        resp.raise_for_status()
+        raw = resp.text[:max_bytes]
+    if "html" in resp.headers.get("content-type", "").lower() or "<html" in raw[:1000].lower():
+        return _strip_html(raw)
+    return raw
 
 
 class LearningAgent:
@@ -176,21 +245,17 @@ class LearningAgent:
         cfg.TOOLS_STAGING_DIR.mkdir(parents=True, exist_ok=True)
         cfg.PLAYBOOKS_STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
+    # ---------------------------------------------------------------- repo
+
     def learn_from_repo(self, repo_url: str) -> LearningReport:
         self.audit.record("learning_action_started", source=repo_url, kind="repo")
         try:
             repo_dir = _clone_readonly(repo_url)
-        except Exception as exc:  # noqa: BLE001
-            return self._finish(LearningReport(source=repo_url, decision="error", reasoning=str(exc)))
-
-        try:
             summary = _summarize_repo(repo_dir)
         except Exception as exc:  # noqa: BLE001
             return self._finish(LearningReport(source=repo_url, decision="error", reasoning=str(exc)))
 
-        prompt = DRAFT_PROMPT_TEMPLATE.format(
-            risk_criteria=RISK_CRITERIA, repo_url=repo_url, repo_summary=summary
-        )
+        prompt = REPO_PROMPT_TEMPLATE.format(risk_criteria=RISK_CRITERIA, source=repo_url, content=summary)
         response = self.provider.chat(
             [
                 {"role": "system", "content": "You evaluate and draft security tool integrations. Output JSON only."},
@@ -222,6 +287,8 @@ class LearningAgent:
 
         return self._finish(report)
 
+    # ----------------------------------------------------- document / url / text
+
     def learn_from_document(self, path: str) -> LearningReport:
         """Text documents only in this version -- .md/.txt/.py/.json/
         .yaml/etc. Image/video analysis would need multimodal support
@@ -241,22 +308,121 @@ class LearningAgent:
                     source=path, decision="error",
                     reasoning=(
                         "Not a text file (binary content, or an image/video/PDF). "
-                        "This version of learn_from_document only reads plain text -- "
-                        "image/video analysis needs multimodal provider support that "
-                        "hasn't been added yet."
+                        "This version only reads plain text -- image/video analysis "
+                        "needs multimodal provider support that hasn't been added yet."
                     ),
                 )
             )
+        return self._learn_from_informational_text(path, text, kind="document")
 
+    def learn_from_url(self, url: str) -> LearningReport:
+        """Any fetchable web page -- an article, write-up, advisory,
+        CTF solution, CVE page. Fetches and extracts readable text
+        only; never executes any script on the page, never follows the
+        page's own links further.
+        """
+        self.audit.record("learning_action_started", source=url, kind="url")
+        try:
+            text = _fetch_url_text(url)
+        except Exception as exc:  # noqa: BLE001
+            return self._finish(LearningReport(source=url, decision="error", reasoning=str(exc)))
+
+        if not text.strip():
+            return self._finish(
+                LearningReport(source=url, decision="error", reasoning="Fetched page had no readable text content.")
+            )
+        return self._learn_from_informational_text(url, text, kind="url")
+
+    def learn_from_text(self, content: str, label: str = "pasted-text") -> LearningReport:
+        """Raw text handed directly to the agent -- a pasted attack-
+        pattern description, a snippet from a conversation, anything
+        that isn't a file path or a URL. No fetching, no file I/O for
+        the source itself.
+        """
+        self.audit.record("learning_action_started", source=label, kind="text")
+        return self._learn_from_informational_text(label, content, kind="text")
+
+    def _learn_from_informational_text(self, source: str, content: str, kind: str) -> LearningReport:
+        prompt = INFO_PROMPT_TEMPLATE.format(risk_criteria=RISK_CRITERIA, source=source, content=content[:20000])
         response = self.provider.chat(
             [
-                {"role": "system", "content": "Summarize this document's content and anything security-relevant in it, concisely."},
-                {"role": "user", "content": text[:20000]},
+                {"role": "system", "content": "You summarize security-relevant content and judge whether it's worth a methodology note. Output JSON only."},
+                {"role": "user", "content": prompt},
             ],
             tools=[],
         )
-        summary = response.content or "(no summary produced)"
-        return self._finish(LearningReport(source=path, decision="summarized", reasoning=summary))
+        parsed = self._parse_json(response.content or "")
+        if parsed is None:
+            # Fall back to treating the raw response as a plain summary
+            # rather than erroring outright -- a model that ignores the
+            # JSON instruction still usually produces a useful answer.
+            return self._finish(
+                LearningReport(source=source, decision="summarized", reasoning=response.content or "(no summary produced)")
+            )
+
+        summary = parsed.get("summary", "(no summary given)")
+        report = LearningReport(source=source, decision="summarized", reasoning=summary)
+
+        if parsed.get("worth_a_playbook_note") and parsed.get("playbook_addendum"):
+            target_playbook = parsed.get("suggested_playbook", "new")
+            name = _slugify(f"{target_playbook}-{source}")
+            pb_path = cfg.PLAYBOOKS_STAGING_DIR / f"{name}.md.draft"
+            pb_path.write_text(
+                f"<!-- Suggested addition to knowledge/playbooks/{target_playbook} -->\n\n"
+                + parsed["playbook_addendum"],
+                encoding="utf-8",
+            )
+            report.staged_playbook_path = pb_path
+
+        return self._finish(report)
+
+    # ------------------------------------------------------------ consolidate
+
+    def consolidate(self, max_chars: int = 60000) -> LearningReport:
+        """The "digest everything learnt and improve" pass: reads the
+        accumulated growth notes (past run summaries + past learn_from_*
+        calls) and asks the model to synthesize recurring patterns or
+        concrete improvements, staging a playbook addendum if it finds
+        one worth proposing. Never edits a live playbook directly.
+        """
+        self.audit.record("learning_action_started", source="knowledge/*.md", kind="consolidate")
+        notes = self.knowledge.load_growth_notes(max_chars=max_chars)
+        if not notes.strip():
+            return self._finish(
+                LearningReport(source="knowledge/*.md", decision="error", reasoning="No growth notes to consolidate yet.")
+            )
+
+        prompt = CONSOLIDATE_PROMPT_TEMPLATE.format(notes=notes)
+        response = self.provider.chat(
+            [
+                {"role": "system", "content": "You synthesize recurring patterns from an agent's own run history. Output JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            tools=[],
+        )
+        parsed = self._parse_json(response.content or "")
+        if parsed is None:
+            return self._finish(
+                LearningReport(source="knowledge/*.md", decision="error", reasoning="Could not parse model output as JSON.")
+            )
+
+        digest = parsed.get("digest", "(no digest produced)")
+        report = LearningReport(source="knowledge/*.md", decision="summarized", reasoning=digest)
+
+        if parsed.get("worth_a_playbook_update") and parsed.get("playbook_addendum"):
+            target_playbook = parsed.get("suggested_playbook", "new")
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            pb_path = cfg.PLAYBOOKS_STAGING_DIR / f"consolidated-{ts}.md.draft"
+            pb_path.write_text(
+                f"<!-- Suggested addition to knowledge/playbooks/{target_playbook}, "
+                f"synthesized from accumulated growth notes -->\n\n" + parsed["playbook_addendum"],
+                encoding="utf-8",
+            )
+            report.staged_playbook_path = pb_path
+
+        return self._finish(report)
+
+    # --------------------------------------------------------------- shared
 
     def _finish(self, report: LearningReport) -> LearningReport:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -272,13 +438,12 @@ class LearningAgent:
             source=report.source,
             decision=report.decision,
             staged_tool=str(report.staged_tool_path) if report.staged_tool_path else None,
+            staged_playbook=str(report.staged_playbook_path) if report.staged_playbook_path else None,
         )
         return report
 
     @staticmethod
     def _parse_json(text: str) -> dict | None:
-        import json
-
         text = text.strip()
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)

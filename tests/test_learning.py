@@ -184,3 +184,170 @@ def test_learn_from_repo_writes_audit_trail(local_repo, learning_agent, tmp_path
     events = [json.loads(line)["event"] for line in audit_path.read_text().strip().splitlines()]
     assert "learning_action_started" in events
     assert "learning_action_finished" in events
+
+
+# ------------------------------------------------------------- learn_from_text
+
+
+def test_learn_from_text_stages_playbook_addendum_when_worthwhile(learning_agent):
+    agent = learning_agent(
+        {
+            "summary": "Describes IDOR via sequential numeric IDs in an API.",
+            "worth_a_playbook_note": True,
+            "playbook_addendum": "### Sequential-ID IDOR variant\nCheck for predictable numeric IDs.",
+            "suggested_playbook": "a01-broken-access-control.md",
+        }
+    )
+    report = agent.learn_from_text(
+        "A user noticed /api/orders/1042 could be changed to /api/orders/1041.", label="forum-post"
+    )
+    assert report.decision == "summarized"
+    assert report.staged_playbook_path is not None
+    content = report.staged_playbook_path.read_text()
+    assert "Sequential-ID IDOR" in content
+    assert "a01-broken-access-control.md" in content
+
+
+def test_learn_from_text_stages_nothing_when_not_worthwhile(learning_agent):
+    agent = learning_agent({"summary": "Just a greeting, nothing security-relevant.", "worth_a_playbook_note": False})
+    report = agent.learn_from_text("hello there", label="chat-message")
+    assert report.decision == "summarized"
+    assert report.staged_playbook_path is None
+
+
+def test_learn_from_text_falls_back_to_raw_summary_on_unparseable_output(learning_agent):
+    agent = learning_agent({})
+    agent.provider.chat = lambda messages, tools: type(
+        "R", (), {"content": "This is just plain prose, not JSON.", "tool_calls": [], "usage_tokens": 1}
+    )()
+    report = agent.learn_from_text("some content", label="x")
+    assert report.decision == "summarized"
+    assert "plain prose" in report.reasoning
+    assert report.staged_playbook_path is None
+
+
+def test_learn_from_text_never_registers_a_new_tool(learning_agent):
+    # learn_from_text/url/document never draft executable tool code,
+    # only playbook notes -- confirm no tool-staging side effect at all.
+    agent = learning_agent(
+        {
+            "summary": "x",
+            "worth_a_playbook_note": True,
+            "playbook_addendum": "### Note\nSome technique.",
+            "suggested_playbook": "new",
+        }
+    )
+    report = agent.learn_from_text("content", label="x")
+    assert report.staged_tool_path is None
+
+
+# -------------------------------------------------------------- learn_from_url
+
+
+def test_learn_from_url_strips_html_and_stages_note(learning_agent, monkeypatch):
+    html = (
+        "<html><head><script>alert(1)</script></head>"
+        "<body><h1>SSRF Write-up</h1><p>Found via the PDF export feature.</p></body></html>"
+    )
+
+    class FakeResp:
+        text = html
+        headers = {"content-type": "text/html"}
+
+        def raise_for_status(self):
+            pass
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, headers=None):
+            return FakeResp()
+
+    monkeypatch.setattr("security_agent.learning.httpx.Client", lambda timeout=30, follow_redirects=True: FakeClient())
+
+    agent = learning_agent(
+        {
+            "summary": "SSRF via PDF export.",
+            "worth_a_playbook_note": True,
+            "playbook_addendum": "### PDF-export SSRF\nTest export features against metadata endpoints.",
+            "suggested_playbook": "a10-ssrf.md",
+        }
+    )
+    report = agent.learn_from_url("http://example.test/writeup")
+    assert report.decision == "summarized"
+    assert report.staged_playbook_path is not None
+    assert "alert(1)" not in report.staged_playbook_path.read_text()
+
+
+def test_learn_from_url_handles_fetch_failure_gracefully(learning_agent, monkeypatch):
+    def _raise(*a, **kw):
+        raise ConnectionError("simulated network failure")
+
+    monkeypatch.setattr("security_agent.learning.httpx.Client", _raise)
+    agent = learning_agent({})
+    report = agent.learn_from_url("http://unreachable.test/page")
+    assert report.decision == "error"
+
+
+# ---------------------------------------------------------------- consolidate
+
+
+def test_consolidate_with_no_notes_yet_errors_cleanly(learning_agent):
+    agent = learning_agent({})
+    report = agent.consolidate()
+    assert report.decision == "error"
+    assert "No growth notes" in report.reasoning
+
+
+def test_consolidate_synthesizes_and_stages_addendum(learning_agent):
+    agent = learning_agent(
+        {
+            "digest": "IDOR via sequential IDs recurred across runs.",
+            "worth_a_playbook_update": True,
+            "playbook_addendum": "### Standing check\nAlways try adjacent IDs.",
+            "suggested_playbook": "a01-broken-access-control.md",
+        }
+    )
+    agent.knowledge.write_note("run-1", "Found IDOR via sequential IDs on orders.")
+    agent.knowledge.write_note("run-2", "Found IDOR via sequential IDs on invoices.")
+
+    report = agent.consolidate()
+    assert report.decision == "summarized"
+    assert "recurred" in report.reasoning
+    assert report.staged_playbook_path is not None
+    assert "consolidated-" in report.staged_playbook_path.name
+
+
+def test_consolidate_stages_nothing_when_not_worthwhile(learning_agent):
+    agent = learning_agent({"digest": "Nothing notable recurs.", "worth_a_playbook_update": False})
+    agent.knowledge.write_note("run-1", "A one-off finding, not a pattern.")
+    report = agent.consolidate()
+    assert report.decision == "summarized"
+    assert report.staged_playbook_path is None
+
+
+def test_consolidate_never_edits_a_live_playbook_file(learning_agent):
+    # Confirm the real, loaded playbooks directory is untouched -- only
+    # the staging directory ever receives a file.
+    from security_agent.memory import KnowledgeBase as RealKB
+
+    real_pb_dir = RealKB().playbooks_dir
+    before = {p: p.read_text() for p in real_pb_dir.glob("*.md")}
+
+    agent = learning_agent(
+        {
+            "digest": "x",
+            "worth_a_playbook_update": True,
+            "playbook_addendum": "### Should never land here directly\n",
+            "suggested_playbook": "a01-broken-access-control.md",
+        }
+    )
+    agent.knowledge.write_note("run-1", "finding")
+    agent.consolidate()
+
+    after = {p: p.read_text() for p in real_pb_dir.glob("*.md")}
+    assert before == after

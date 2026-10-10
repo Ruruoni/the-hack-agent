@@ -119,11 +119,27 @@ def main(argv: list[str] | None = None) -> int:
 
     learn_p = sub.add_parser(
         "learn",
-        help="Read a repo or document and draft a staged tool/playbook/summary for human review. Never executes or registers anything.",
+        help=(
+            "Read a repo, document, URL, or raw text and draft a staged "
+            "tool/playbook/summary for human review. Never executes or registers anything."
+        ),
     )
-    learn_p.add_argument("source", help="A repo URL (for --type repo) or local file path (for --type document).")
-    learn_p.add_argument("--type", choices=["repo", "document"], default="repo")
+    learn_p.add_argument(
+        "source",
+        help="A repo URL / file path / web URL (depending on --type), or raw text if --type text.",
+    )
+    learn_p.add_argument("--type", choices=["repo", "document", "url", "text"], default="repo")
+    learn_p.add_argument("--label", default="pasted-text", help="For --type text: a short label for the source.")
     learn_p.add_argument("-v", "--verbose", action="store_true")
+
+    consolidate_p = sub.add_parser(
+        "consolidate",
+        help=(
+            "Digest accumulated knowledge/*.md growth notes for recurring patterns and "
+            "stage a playbook addendum if one is worth proposing. Never edits a live playbook."
+        ),
+    )
+    consolidate_p.add_argument("-v", "--verbose", action="store_true")
 
     check_p = sub.add_parser("check-scope", help="Validate scope.yaml and exit.")
     check_p.add_argument("-v", "--verbose", action="store_true")
@@ -145,12 +161,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{f.name:40s} {first_line}")
         return 0
 
-    if args.command == "learn":
+    if args.command in ("learn", "consolidate"):
         agent = LearningAgent(config=load_config())
-        if args.type == "repo":
+        if args.command == "consolidate":
+            report = agent.consolidate()
+        elif args.type == "repo":
             report = agent.learn_from_repo(args.source)
-        else:
+        elif args.type == "document":
             report = agent.learn_from_document(args.source)
+        elif args.type == "url":
+            report = agent.learn_from_url(args.source)
+        else:  # text
+            report = agent.learn_from_text(args.source, label=args.label)
 
         print(f"Source:    {report.source}")
         print(f"Decision:  {report.decision}")
@@ -162,8 +184,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nKnowledge note: {report.knowledge_note_path}")
         print(
             "\nNothing was executed. Nothing was registered into the live tool "
-            "registry. Review the staged files yourself before promoting anything "
-            "-- see security_agent/tools_staging/README.md."
+            "registry or loaded into the live playbooks. Review the staged files "
+            "yourself before promoting anything -- see "
+            "security_agent/tools_staging/README.md."
         )
         return 0
 
