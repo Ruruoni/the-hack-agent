@@ -80,6 +80,7 @@ def test_default_registry_has_expected_tools():
         "apply_fix_to_repo",
         "format_bug_report",
         "submit_bug_report",
+        "ip_geolocation",
     ):
         assert expected in names
 
@@ -861,3 +862,116 @@ def test_crypto_toolkit_needs_no_network_scope_check(guardrails):
 
     result = CryptoToolkitTool().run(guardrails, operation="rot13", text="test")
     assert result.ok is True
+
+
+# --------------------------------------------------------------- ip_geolocation
+
+
+def test_ip_geolocation_refuses_out_of_scope_target_before_any_lookup(guardrails):
+    from security_agent.tools.recon import IpGeolocationTool
+
+    with pytest.raises(ScopeViolation):
+        IpGeolocationTool().run(guardrails, target="8.8.8.8")
+
+
+def test_ip_geolocation_returns_registry_metadata_for_in_scope_ip(guardrails, monkeypatch):
+    from security_agent.tools.recon import IpGeolocationTool
+
+    fake_data = {
+        "status": "success", "country": "Germany", "countryCode": "DE",
+        "regionName": "Hesse", "city": "Frankfurt", "isp": "Hetzner Online GmbH",
+        "org": "Hetzner Online GmbH", "as": "AS24940 Hetzner Online GmbH", "query": "10.10.10.5",
+    }
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return fake_data
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, params=None):
+            return FakeResp()
+
+    monkeypatch.setattr("security_agent.tools.recon.httpx.Client", lambda timeout=15.0: FakeClient())
+    result = IpGeolocationTool().run(guardrails, target="10.10.10.5")
+    assert result.ok is True
+    assert "Hetzner Online GmbH" in result.summary
+    assert "Frankfurt" in result.summary
+    assert "not a live position" in result.summary  # the disclaimer must always be present
+
+
+def test_ip_geolocation_resolves_hostname_before_lookup(guardrails, monkeypatch):
+    from security_agent.tools.recon import IpGeolocationTool
+
+    monkeypatch.setattr("socket.gethostbyname", lambda host: "10.10.10.5")
+    fake_data = {"status": "success", "country": "X", "countryCode": "X", "regionName": "X",
+                 "city": "X", "isp": "X", "org": "X", "as": "X", "query": "10.10.10.5"}
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return fake_data
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, params=None):
+            return FakeResp()
+
+    monkeypatch.setattr("security_agent.tools.recon.httpx.Client", lambda timeout=15.0: FakeClient())
+    result = IpGeolocationTool().run(guardrails, target="app.example-lab.local")
+    assert result.ok is True
+
+
+def test_ip_geolocation_handles_unresolvable_hostname_cleanly(guardrails, monkeypatch):
+    from security_agent.tools.recon import IpGeolocationTool
+
+    def _raise(host):
+        raise OSError("Name or service not known")
+
+    monkeypatch.setattr("socket.gethostbyname", _raise)
+    result = IpGeolocationTool().run(guardrails, target="app.example-lab.local")
+    assert result.ok is False
+    assert "Could not resolve" in result.summary
+
+
+def test_ip_geolocation_handles_api_failure_status(guardrails, monkeypatch):
+    from security_agent.tools.recon import IpGeolocationTool
+
+    fake_fail = {"status": "fail", "message": "private range", "query": "10.10.10.5"}
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return fake_fail
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, params=None):
+            return FakeResp()
+
+    monkeypatch.setattr("security_agent.tools.recon.httpx.Client", lambda timeout=15.0: FakeClient())
+    result = IpGeolocationTool().run(guardrails, target="10.10.10.5")
+    assert result.ok is False
+    assert "private range" in result.summary

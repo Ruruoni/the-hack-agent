@@ -17,6 +17,12 @@ error messages, unnecessary features enabled.
   response (`http_request` with a deliberately broken parameter).
 - Check for directory listing enabled (`directory_bruteforce` plus
   manually visiting a directory path with no index file).
+- `ip_geolocation` on each in-scope host's IP: if the organization has
+  stated data-residency requirements (e.g. "EU customer data stays in
+  the EU") and the registered hosting location doesn't match, that's
+  a finding worth raising even though it's not a traditional
+  vulnerability -- cross-reference with PCI DSS/GDPR scope if
+  applicable rather than treating it as purely informational.
 
 ## Intermediate
 - Default credentials on any discovered admin panel, DB admin UI

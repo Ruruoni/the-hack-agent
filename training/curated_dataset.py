@@ -443,6 +443,34 @@ EXAMPLES: dict[str, list[dict]] = {
                 "detailed errors only in internal logs."
             ),
         },
+        {
+            "scenario": "A healthcare client states their patient-records app must keep all data within the EU for compliance reasons. ip_geolocation on the app's main IP returns a datacenter in Virginia, USA. Is this a finding, and is this the same thing as tracking a person's location?",
+            "ideal_response": (
+                "Phase: vulnerability identification, A05 playbook, basic tier -- and no, this is "
+                "not person-tracking: ip_geolocation resolved a static registry entry for the IP "
+                "block (which organization/region that IP is registered to), the same class of "
+                "information WHOIS already provides, not a live position of any individual.\n\n"
+                "Finding: Hosting location contradicts stated data-residency requirement. Evidence: "
+                "ip_geolocation confirms the app's primary IP is registered to a US-based "
+                "datacenter, despite the client's stated EU-data-residency requirement. Severity: "
+                "High (this is a compliance/legal exposure, not a technical vulnerability in the "
+                "traditional sense, but still worth flagging plainly). Breach pattern: "
+                "Miscellaneous Errors (process gap between stated policy and actual "
+                "infrastructure). NIST CSF 2.0: GV.RM (risk management didn't catch this gap), "
+                "ID.AM (asset management -- hosting location is an asset attribute that should be "
+                "tracked). ISO 27001:2022: A.5.19/A.5.23 (supplier/cloud service relationships). "
+                "CIS v8: not control-specific; flag as a governance item. PCI DSS v4.0: not "
+                "applicable unless cardholder data is also involved, but GDPR-style data-residency "
+                "obligations apply regardless of PCI scope. Remediation: migrate to EU-region "
+                "infrastructure, or correct the stated compliance claim if the architecture can't "
+                "actually meet it -- that's a decision for the client, not something to resolve in "
+                "this report.\n\n"
+                "Caveat worth stating in the report: this is one IP's registered location, checked "
+                "once -- if the app uses a CDN or multiple regions, confirm this isn't just an edge "
+                "node by checking a few different access points/times before treating it as "
+                "conclusive."
+            ),
+        },
     ],
     "a06-vulnerable-components.md": [
         {

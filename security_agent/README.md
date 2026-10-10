@@ -91,6 +91,7 @@ itself writes after each run.
 | `port_scan` (nmap) | passive_recon | service/version discovery |
 | `subdomain_enum` (subfinder) | passive_recon | attack-surface mapping |
 | `http_probe` (httpx) | passive_recon | alive hosts, tech fingerprint |
+| `ip_geolocation` (ip-api.com) | passive_recon | A05, one-time IP-block registry/org lookup -- network metadata, not tracking |
 | `tls_scan` (testssl.sh/sslscan) | passive_recon | A02 crypto/TLS config |
 | `jwt_analyze` (local) | passive_recon | A02/A07 JWT weaknesses |
 | `web_vuln_scan` (nuclei) | active_scanning | A05/A06, broad CVE/misconfig |
@@ -312,7 +313,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-147 tests covering `guardrails.py` (scope/budget/approval enforcement —
+152 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted

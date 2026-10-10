@@ -18,7 +18,9 @@ and ground rules that tie them together.
    fingerprinting, TLS/cert inspection, robots.txt/sitemap, exposed
    .git/.env/backup files, Wayback/cert-transparency history. No payloads
    sent, nothing that could alter state. Tools: `subdomain_enum`,
-   `http_probe`, `tls_scan`, `port_scan` (service/version only).
+   `http_probe`, `tls_scan`, `port_scan` (service/version only),
+   `ip_geolocation` (which registry/organization an IP block belongs
+   to -- a static, one-time metadata lookup, not live tracking).
 3. **Mapping.** Enumerate the attack surface on each live host: endpoints,
    parameters, forms, directories/files (`directory_bruteforce`),
    authentication flows, API surface, technology stack and versions.

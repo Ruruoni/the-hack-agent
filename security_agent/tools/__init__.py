@@ -17,7 +17,7 @@ from .jwt_analysis import JwtAnalyzeTool
 from .osint import EmailHarvestTool, UsernameOsintTool
 from .packet_capture import PacketCaptureTool
 from .phishing_simulation import PhishingSimulationTool
-from .recon import HttpProbeTool, PortScanTool, SubdomainEnumTool
+from .recon import HttpProbeTool, IpGeolocationTool, PortScanTool, SubdomainEnumTool
 from .remediation import ApplyFixToRepoTool, ProposeFixTool
 from .sast import SastScanTool, SecretScanTool
 from .smart_contract import SmartContractScanTool
@@ -34,6 +34,7 @@ def build_default_registry() -> ToolRegistry:
         FastPortScanTool,  # RustScan, full-range alternative to port_scan
         SubdomainEnumTool,
         HttpProbeTool,
+        IpGeolocationTool,  # one-time IP-block registry lookup -- network metadata, not tracking
         TlsScanTool,
         JwtAnalyzeTool,
         EmailHarvestTool,  # domain -> emails/subdomains from public sources
