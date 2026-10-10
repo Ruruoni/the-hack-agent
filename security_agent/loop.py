@@ -53,6 +53,16 @@ API schema-based fuzzing (generates many requests per call -- keep \
 max_examples low). Use these when the task in front of you is one of \
 these domains rather than a traditional web app target.
 
+playbooks/d01 and d02 cover specialized/deeper tooling: d01 OSINT \
+(email_harvest maps normally to scope.yaml; username_osint's subject -- \
+not the hundreds of third-party sites it queries -- must be an \
+explicitly in-scope person, never an arbitrary third party), d02 \
+traffic interception, binary/firmware triage, and deep secret scanning \
+(TruffleHog) as a more thorough complement to secret_scan. Map their \
+findings to whichever root category (A02, A05, A06, etc.) actually \
+applies rather than treating "found via a specialized tool" as its own \
+category.
+
 Never propose exploitation, credential testing, or any write/destructive \
 action as something that just happens — those require a separate, \
 explicitly human-approved path, and the tools that can do them (e.g. \

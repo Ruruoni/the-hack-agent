@@ -105,15 +105,44 @@ itself writes after each run.
 | `cloud_posture_scan` (Prowler) | local (credentialed audit, no network target) | C01, AWS/Azure/GCP/K8s misconfig |
 | `container_image_scan` (Trivy) | local (read-only image/IaC inspection) | C02, container image & IaC scanning |
 | `smart_contract_scan` (Slither) | local (source analysis) | C03, Solidity vulnerability classes |
+| `email_harvest` (theHarvester) | passive_recon | D01, emails/subdomains from public sources |
+| `username_osint` (Sherlock) | local (subject-scoped, not a network host) | D01, username enumeration across platforms |
+| `traffic_capture` (mitmproxy) | active_scanning | D02, bounded reverse-proxy traffic capture |
+| `binary_analysis` (Ghidra headless) | local (binary/firmware triage) | D02, static triage of a local binary |
+| `deep_secret_scan` (TruffleHog) | local (source/history analysis) | D02, secret scanning with live verification |
 
 All of the above are optional external dependencies — a missing binary
 makes that one tool refuse with a clear message, nothing is vendored
 into this repo. Sources: `hackagent` (AISecurityLab/hackagent,
 Apache-2.0), Prowler (prowler-cloud/prowler, Apache-2.0), Trivy and
 kube-hunter (aquasecurity, Apache-2.0), Slither (crytic/slither,
-AGPL-3.0), Schemathesis (schemathesis/schemathesis, MIT). See
-`knowledge/playbooks/a11-*.md` and `c01-*.md` through `c04-*.md` for
-how each is used.
+AGPL-3.0), Schemathesis (schemathesis/schemathesis, MIT), theHarvester
+(laramies/theHarvester, GPL-3.0), Sherlock (sherlock-project/sherlock,
+MIT), mitmproxy (mitmproxy/mitmproxy, MIT), Ghidra
+(NationalSecurityAgency/ghidra, Apache-2.0), TruffleHog
+(trufflesecurity/trufflehog, AGPL-3.0). See
+`knowledge/playbooks/a11-*.md`, `c01-*.md` through `c04-*.md`, and
+`d01-*.md`/`d02-*.md` for how each is used.
+
+### Deliberately not wrapped
+
+Live-exploitation and credential-cracking frameworks — Metasploit,
+Hydra, Medusa, Hashcat, John the Ripper, Mimikatz, BeEF, RouterSploit,
+Commix, and wireless-attack suites (Aircrack-ng, Wifite, Reaver,
+hcxdumptool) — are not wrapped as auto-invokable tools here, and
+neither are "menu" aggregator repos that bundle dozens of tools under
+one installer (`Z4nzu/hackingtool`, `Manisso/fsociety` — both reviewed
+and declined; the former explicitly catalogs DDoS and phishing tool
+categories, the latter bundles brute-forcers and post-exploitation
+tooling). The gap between "confirm a vulnerability with one minimal
+PoC" (what every exploitation-category tool here does) and "run a
+general-purpose exploitation/credential-cracking framework" is large
+enough that wrapping the latter for autonomous use would meaningfully
+change this agent's risk profile, not just extend its coverage. These
+remain human-operated tools outside the agent's tool registry. If you
+want one wrapped with appropriately heavy gating for a specific,
+narrow use case, that is a deliberate design decision to make
+explicitly, not a default to add by habit.
 
 ## Self-growth, safely
 
@@ -140,7 +169,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-81 tests covering `guardrails.py` (scope/budget/approval enforcement —
+88 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted

@@ -931,6 +931,87 @@ EXAMPLES: dict[str, list[dict]] = {
             ),
         },
     ],
+    "d01-osint-reconnaissance.md": [
+        {
+            "scenario": "A client asks you to 'look into what we can find on our competitor's CEO online' during an engagement. How do you respond, and would you run username_osint against that name?",
+            "ideal_response": (
+                "Phase: scope confirmation, D01 playbook -- refuse this specific request as framed, "
+                "before running any tool.\n\n"
+                "The competitor's CEO is not an employee or asset of the organization that engaged "
+                "this assessment, and is not named in scope.yaml's authorization. D01 is explicit: "
+                "username_osint's subject must be in scope for this engagement (an employee as part "
+                "of an authorized social-engineering-readiness assessment, or the organization's own "
+                "public accounts) -- never an arbitrary third party, and a competitor's executive is "
+                "exactly the kind of arbitrary third party this rules out, regardless of how harmless "
+                "'just looking' might sound.\n\n"
+                "Correct response: decline to run username_osint or email_harvest against this "
+                "subject, and explain to the client that this falls outside the engagement's "
+                "authorized scope -- if they want competitive intelligence, that is a different kind "
+                "of engagement with its own authorization requirements, not something this agent "
+                "performs opportunistically."
+            ),
+        },
+        {
+            "scenario": "email_harvest against example-lab.local (an in-scope domain) returns three subdomains that weren't in the client's own asset inventory list. What's the finding?",
+            "ideal_response": (
+                "Phase: vulnerability identification, D01 playbook, intermediate tier "
+                "(cross-referencing OSINT against known inventory).\n\n"
+                "Finding: OSINT reveals unlisted subdomains absent from the organization's asset "
+                "inventory. Evidence: email_harvest (theHarvester, crtsh/bing sources) surfaced 3 "
+                "subdomains of example-lab.local not present in the client-provided asset list. "
+                "Severity: Medium (High if any of the three, once probed via http_probe per the "
+                "normal recon phase, turns out to be running outdated/unmaintained software -- an "
+                "unlisted asset is often also an unpatched one). Breach pattern: Miscellaneous "
+                "Errors. ATT&CK: T1593 Search Open Websites/Domains (how the gap was found, not "
+                "how an attacker would exploit it -- the exploitable risk is whatever's actually "
+                "running on the unlisted subdomains, found via follow-up recon). NIST CSF 2.0: "
+                "ID.AM (Asset Management). ISO 27001:2022: A.5.9 (Inventory of Information and Other "
+                "Associated Assets). CIS v8: Control 1 (Inventory and Control of Enterprise Assets), "
+                "IG1. PCI DSS v4.0: not applicable to the inventory gap itself. Remediation: "
+                "incorporate recurring OSINT/certificate-transparency monitoring into the asset "
+                "inventory process, not just manual self-reporting.\n\n"
+                "Next step: run http_probe and tls_scan against the three newly-found subdomains "
+                "(now that they're confirmed subdomains of an in-scope domain) to see what's "
+                "actually running on them before closing this finding."
+            ),
+        },
+    ],
+    "d02-traffic-binary-and-deep-secrets.md": [
+        {
+            "scenario": "traffic_capture against app.example-lab.local for 30 seconds captures zero flows. What does this mean, and how should it be reported?",
+            "ideal_response": (
+                "Phase: vulnerability identification, D02 playbook -- per the playbook's explicit "
+                "caution, an empty capture window most often means nothing drove traffic through "
+                "the proxy during that window, not that the app has no issues to find.\n\n"
+                "Report this plainly rather than as a clean result: 'traffic_capture ran for 30s "
+                "against app.example-lab.local with zero flows captured -- this reflects that no "
+                "client traffic was routed through the reverse proxy during the window, not a "
+                "confirmed absence of findings. A real capture requires actively driving traffic "
+                "(e.g. a manual browse-through, or an automated client configured to use this proxy) "
+                "during the window.' This should not be written up as 'no traffic-layer findings' "
+                "in the final report -- that would overstate what was actually tested."
+            ),
+        },
+        {
+            "scenario": "deep_secret_scan (TruffleHog, only_verified=True) against a company's main git repository's full history reports one verified AWS secret key in a commit from two years ago that was removed in a later commit. How significant is this, and does its age matter?",
+            "ideal_response": (
+                "Phase: vulnerability identification, D02 playbook, basic tier.\n\n"
+                "Finding: Verified-live AWS credential found in git history (removed from HEAD but "
+                "present in an old commit). Evidence: deep_secret_scan with only_verified=True "
+                "confirmed this key authenticates successfully against AWS's own API -- this is not "
+                "a pattern match, it is a live-verified credential. Severity: Critical. Per D02's "
+                "playbook explicitly: age does not matter here -- 'it's an old commit' does not mean "
+                "the credential has been rotated, and this scan just proved it has not been. Breach "
+                "pattern: Identity Theft/Credential Abuse. ATT&CK: T1552.001 Unsecured Credentials: "
+                "Credentials in Files. NIST CSF 2.0: PR.AA, PR.DS-01. ISO 27001:2022: A.8.24, A.8.12 "
+                "(Data Leakage Prevention). CIS v8: Control 3, IG1. PCI DSS v4.0: Requirement 3/8 if "
+                "this key has any CDE-adjacent access. Remediation: rotate this credential "
+                "immediately -- this is urgent, not a scheduled-cycle item -- and purge it from git "
+                "history (not just a new commit removing it, since history retains it), then add "
+                "deep_secret_scan to CI to catch this before merge in the future."
+            ),
+        },
+    ],
 }
 
 

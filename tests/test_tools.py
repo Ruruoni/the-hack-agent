@@ -64,6 +64,11 @@ def test_default_registry_has_expected_tools():
         "cloud_posture_scan",
         "container_image_scan",
         "smart_contract_scan",
+        "email_harvest",
+        "username_osint",
+        "traffic_capture",
+        "binary_analysis",
+        "deep_secret_scan",
     ):
         assert expected in names
 
@@ -251,3 +256,76 @@ def test_api_fuzz_test_refuses_out_of_scope_schema(guardrails):
     tool = ApiFuzzTool()
     with pytest.raises(ScopeViolation):
         tool.run(guardrails, schema_url="https://evil.com/openapi.json")
+
+
+# ------------------------------------------------- OSINT / traffic / binary / deep secrets
+
+
+def test_email_harvest_is_network_target_and_scope_checked(guardrails):
+    from security_agent.tools.osint import EmailHarvestTool
+
+    tool = EmailHarvestTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(guardrails, domain="evil.com")
+
+
+def test_email_harvest_runs_against_in_scope_domain(monkeypatch, guardrails):
+    from security_agent.tools.osint import EmailHarvestTool
+
+    tool = EmailHarvestTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+    monkeypatch.setattr(tool, "_run_subprocess", lambda cmd, timeout=300: (0, "found 2 emails", ""))
+    result = tool.run(guardrails, domain="app.example-lab.local")
+    assert result.ok is True
+
+
+def test_username_osint_uses_local_action_not_domain_scope(guardrails):
+    # The subject (username) isn't a network host -- it must not be
+    # checked against allowed_domains/allowed_cidrs. It should reach the
+    # "not installed" branch rather than a ScopeViolation.
+    from security_agent.tools.osint import UsernameOsintTool
+
+    tool = UsernameOsintTool()
+    result = tool.run(guardrails, username="some-employee-handle")
+    assert result.ok is False
+    assert "not installed" in result.summary
+
+
+def test_traffic_capture_is_network_target_and_caps_duration(guardrails):
+    from security_agent.tools.traffic_capture import TrafficCaptureTool
+
+    tool = TrafficCaptureTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(guardrails, target="https://evil.com", duration_seconds=30)
+
+
+def test_binary_analysis_uses_local_action(guardrails, monkeypatch):
+    from security_agent.tools import binary_analysis as ba_module
+    from security_agent.tools.binary_analysis import BinaryAnalysisTool
+
+    tool = BinaryAnalysisTool()
+    monkeypatch.setattr(ba_module, "_find_analyze_headless", lambda: "/usr/bin/analyzeHeadless")
+    monkeypatch.setattr(tool, "_run_subprocess", lambda cmd, timeout=900: (0, "analysis complete", ""))
+    result = tool.run(guardrails, path="/local/firmware.bin")
+    assert result.ok is True
+
+
+def test_binary_analysis_reports_missing_ghidra_cleanly(guardrails, monkeypatch):
+    from security_agent.tools import binary_analysis as ba_module
+    from security_agent.tools.binary_analysis import BinaryAnalysisTool
+
+    tool = BinaryAnalysisTool()
+    monkeypatch.setattr(ba_module, "_find_analyze_headless", lambda: None)
+    result = tool.run(guardrails, path="/local/firmware.bin")
+    assert result.ok is False
+    assert "not installed" in result.summary or "analyzeHeadless" in result.summary
+
+
+def test_deep_secret_scan_uses_local_action(guardrails, monkeypatch):
+    from security_agent.tools.deep_secrets import DeepSecretScanTool
+
+    tool = DeepSecretScanTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+    monkeypatch.setattr(tool, "_run_subprocess", lambda cmd, timeout=600: (0, "[]", ""))
+    result = tool.run(guardrails, target="/local/repo")
+    assert result.ok is True
