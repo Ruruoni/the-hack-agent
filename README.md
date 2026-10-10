@@ -6,11 +6,15 @@ runs — the model proposes, the guardrails dispose.
 
 It ships pre-equipped with a full OWASP Top 10 (2021) testing
 methodology (`knowledge/playbooks/`) and the tools to act on it — plug
-in any model and it's ready on the first run, no training step.
+in any model and it's ready on the first run, no training step. That's
+*injection* (pasted into the prompt every run); `training/` also offers
+*digestion* — an optional pipeline to actually fine-tune an open model's
+weights on this same methodology instead.
 
 See [`security_agent/README.md`](security_agent/README.md) for setup,
 usage, the built-in OWASP playbooks, and how the self-growth / eval-gate
-loop works.
+loop works, and [`training/README.md`](training/README.md) for the
+fine-tuning pipeline.
 
 ## Quick start
 
@@ -36,4 +40,5 @@ reports/                # per-run markdown reports + audit.jsonl (gitignored)
 evals/                  # regression gate — score agent changes before merging
 CODEOWNERS              # protects scope.yaml / guardrails.py from unreviewed changes
 .github/workflows/      # eval-gate CI
+training/               # optional: fine-tune an open model on the playbooks (digestion, not injection)
 ```

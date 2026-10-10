@@ -8,3 +8,10 @@ __pycache__/
 # unless you deliberately want to commit them for a record.
 reports/*.md
 reports/audit.jsonl
+
+# Training artifacts: generated datasets and model weights are large and
+# reproducible from the playbooks/scripts — don't commit them by default.
+# (Remove these lines if you deliberately want a dataset snapshot in git.)
+training/dataset/*.jsonl
+training/output/
+

@@ -1,0 +1,122 @@
+# Training pipeline — digestion, not injection
+
+`security_agent/memory.py` pastes `knowledge/playbooks/` into the prompt
+every run (injection). This pipeline instead bakes that methodology into
+a model's own weights via QLoRA fine-tuning (digestion), so the knowledge
+doesn't have to be re-supplied at inference time and isn't vulnerable to
+being crowded out of a short context window.
+
+**Trade-off to go in with eyes open:** this locks you to whichever base
+model you fine-tune — the opposite of `security_agent/providers.py`'s
+model-agnostic design. You'll likely want *both*: a fine-tuned model as
+the default brain, with the playbooks still loaded at runtime as a
+refresher/override for anything added or changed since the last training
+run. Nothing about running `security_agent` requires you to use the
+fine-tuned model instead of the prompt-injection path — they're
+independent; you choose at runtime via `AGENT_LLM_*` env vars.
+
+## Pipeline
+
+```
+knowledge/playbooks/*.md
+        │  training/generate_dataset.py (calls your configured LLM provider)
+        ▼
+training/dataset/train.jsonl + train.val.jsonl   ← REVIEW THIS FILE
+        │  training/finetune_lora.py (QLoRA, needs a GPU)
+        ▼
+training/output/security-agent-lora/             (a LoRA adapter)
+        │  training/merge_adapter.py   (optional)
+        ▼
+training/output/security-agent-merged/           (standalone merged model)
+        │  llama.cpp convert + quantize           (optional, for Ollama)
+        ▼
+a .gguf file you `ollama create` a model from
+```
+
+## 1. Generate the dataset
+
+```bash
+pip install -r security_agent/requirements.txt  # for the provider call
+python -m training.generate_dataset --examples-per-playbook 20
+```
+
+This calls whichever LLM your `AGENT_LLM_*` env vars already point
+`security_agent` at (see `security_agent/README.md`) to expand each of
+the 13 playbook files into realistic (scenario → ideal response)
+examples, written to `training/dataset/train.jsonl` (90%) and
+`train.val.jsonl` (10%, held out for eval during training).
+
+**13 playbooks × 20 examples = ~260 examples** by default — enough to
+start steering a model's behavior via LoRA, but small by fine-tuning
+standards. Raise `--examples-per-playbook` (try 50-100) for a stronger
+effect, and skim the output for garbage/duplicate examples before
+training — this file *is* the training signal; nothing downstream
+corrects for a bad dataset.
+
+A strong hosted model (Claude, GPT-4-class, or a large Groq-hosted open
+model) tends to generate better training examples than a small local
+one, even if the model you're ultimately fine-tuning is small/local —
+you can point `AGENT_LLM_*` at a different provider for this generation
+step than the one you train.
+
+## 2. Fine-tune
+
+Needs a CUDA GPU (a 7-8B base model at 4-bit needs roughly 12GB+ VRAM
+comfortably; this cloud session itself likely has no GPU attached — run
+this step on your own machine or a rented GPU instance).
+
+```bash
+pip install -r training/requirements.txt
+python -m training.finetune_lora \
+    --base-model Qwen/Qwen2.5-7B-Instruct \
+    --dataset training/dataset/train.jsonl \
+    --val-dataset training/dataset/train.val.jsonl \
+    --output training/output/security-agent-lora
+```
+
+Defaults (3 epochs, r=16, 4-bit QLoRA) are a reasonable starting point
+for a dataset this size; watch `eval_loss` in the logs and reduce epochs
+if it starts climbing (overfitting on a small dataset is the main risk).
+
+## 3. Use the fine-tuned model
+
+**Option A — merge + GGUF, run in Ollama (matches `security_agent`'s
+default provider):**
+
+```bash
+python -m training.merge_adapter \
+    --base-model Qwen/Qwen2.5-7B-Instruct \
+    --adapter training/output/security-agent-lora \
+    --output training/output/security-agent-merged
+
+# then, using llama.cpp (https://github.com/ggml-org/llama.cpp):
+python convert_hf_to_gguf.py training/output/security-agent-merged --outfile security-agent.gguf
+ollama create security-agent -f Modelfile   # Modelfile FROM security-agent.gguf
+```
+
+Then point `security_agent` at it:
+```bash
+export AGENT_LLM_PROVIDER=ollama
+export AGENT_LLM_MODEL=security-agent
+```
+
+**Option B — serve the merged model with vLLM** (an OpenAI-compatible
+endpoint `security_agent`'s `openai_compatible` provider can call
+directly, no GGUF conversion needed):
+
+```bash
+vllm serve training/output/security-agent-merged
+export AGENT_LLM_PROVIDER=openai_compatible
+export AGENT_LLM_BASE_URL=http://localhost:8000
+export AGENT_LLM_MODEL=security-agent-merged
+```
+
+## Keeping it current
+
+The playbooks will keep changing (new tools, new categories, lessons
+from `knowledge/`'s growth notes). Re-run the pipeline periodically
+rather than treating the fine-tune as permanent — `generate_dataset.py`
+always reads the current `knowledge/playbooks/`, so a re-run naturally
+picks up anything added since the last training pass. Keep the
+injection path (`memory.py` loading playbooks at runtime) on regardless
+— it's what covers the gap between training runs.
