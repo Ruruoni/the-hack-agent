@@ -248,21 +248,50 @@ for that default.
 
 ## Self-growth, safely
 
-The agent doesn't rewrite its own code unsupervised. Growth happens two ways:
+The agent doesn't rewrite its own code unsupervised. Growth happens three ways:
 
 1. **Knowledge growth** — `knowledge/*.md` notes accumulate automatically
    and get reviewed/pruned like any other file in PRs.
-2. **Capability growth** — adding a new tool in `security_agent/tools/`,
-   adjusting the prompt in `loop.py`, or loosening `scope.yaml` is a normal
-   pull request. Two CI gates run on it: `.github/workflows/tests.yml`
-   (the `tests/` suite — fast, no GPU/LLM/network needed, runs on every
-   push) and `.github/workflows/security-agent-eval.yml`
-   (`evals/run_eval.py` against your own lab targets — needs a live model,
-   only runs on agent-touching PRs). `CODEOWNERS` requires your review on
-   `scope.yaml`, `guardrails.py`, and its test file specifically, so the
-   agent's own proposed changes can never loosen its safety boundary (or
-   the tests that would catch a regression there) without a human
-   approving it.
+2. **Self-learning (staging only)** — `security_agent/learning.py`'s
+   `LearningAgent` can read a GitHub repo or a local document and draft
+   a proposed new tool + playbook, entirely on its own, with no approval
+   gate:
+   ```bash
+   python -m security_agent.cli learn https://github.com/someorg/sometool
+   python -m security_agent.cli learn ./some-report.md --type document
+   ```
+   This needs no approval because it can't touch anything — it only
+   clones a repo read-only (never executes anything from it), reads
+   text, and writes draft files to `security_agent/tools_staging/` and
+   `knowledge/playbooks_staging/`. Nothing it writes is imported,
+   registered, or loaded by the running agent (`.py.draft`/`.md.draft`
+   extensions keep them out of both `tools/__init__.py` and
+   `KnowledgeBase.load_playbooks()`). It also applies the same risk
+   criteria as this README's "Deliberately not wrapped" section — but
+   that's advice to the reviewer, not a gate, so re-check it yourself;
+   see `security_agent/tools_staging/README.md` for the actual
+   promotion process (a normal PR, same CODEOWNERS/eval-gate review as
+   anything else). This only reads text — image/video analysis would
+   need multimodal support in `providers.py`, which isn't added yet.
+3. **Capability growth** — promoting a staged draft, or adding a new
+   tool directly in `security_agent/tools/`, adjusting the prompt in
+   `loop.py`, or loosening `scope.yaml`, is a normal pull request. Two
+   CI gates run on it: `.github/workflows/tests.yml` (the `tests/`
+   suite — fast, no GPU/LLM/network needed, runs on every push) and
+   `.github/workflows/security-agent-eval.yml` (`evals/run_eval.py`
+   against your own lab targets — needs a live model, only runs on
+   agent-touching PRs). `CODEOWNERS` requires your review on
+   `scope.yaml`, `guardrails.py`, and its test file specifically, so
+   the agent's own proposed changes — staged or direct — can never
+   loosen its safety boundary (or the tests that would catch a
+   regression there) without a human approving it.
+
+What this doesn't do, on purpose: the agent cannot set its own
+objectives. `LearningAgent` only runs when you invoke `cli learn`; the
+main agent loop (`SecurityAgent.run()`) only ever acts on an objective
+you give it. Every action still traces back to something a human asked
+for, the same way every action still traces back to `scope.yaml`'s
+authorization.
 
 ## Tests
 
@@ -271,7 +300,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-127 tests covering `guardrails.py` (scope/budget/approval enforcement —
+137 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted

@@ -17,6 +17,13 @@ REPORTS_DIR = REPO_ROOT / "reports"
 EVALS_DIR = REPO_ROOT / "evals"
 AUDIT_LOG_PATH = REPO_ROOT / "reports" / "audit.jsonl"
 
+# Where learning.py stages draft tools/playbooks for human review. Never
+# auto-registered into security_agent/tools/ or knowledge/playbooks/ --
+# promoting a draft out of here is always a deliberate, separate human
+# step (a normal PR, same as every other tool in this repo).
+TOOLS_STAGING_DIR = REPO_ROOT / "security_agent" / "tools_staging"
+PLAYBOOKS_STAGING_DIR = REPO_ROOT / "knowledge" / "playbooks_staging"
+
 
 def _env_int(name: str, default: int) -> int:
     try:

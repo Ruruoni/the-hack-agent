@@ -27,18 +27,21 @@ fine-tuning pipeline.
    python -m security_agent.cli check-scope
    python -m security_agent.cli owasp-scan example-lab.local   # full OWASP Top 10 sweep
    python -m security_agent.cli list-playbooks                 # see what's loaded
+   python -m security_agent.cli learn https://github.com/org/tool  # self-learn, drafts only
    ```
 
 ## Layout
 
 ```
-scope.yaml              # human-owned authorization boundary
-security_agent/         # guardrails, LLM providers, tools, agent loop, CLI
-knowledge/playbooks/    # built-in OWASP Top 10 methodology (curated, always loaded)
-knowledge/*.md          # growth memory — notes the agent writes after each run
-reports/                # per-run markdown reports + audit.jsonl (gitignored)
-evals/                  # regression gate — score agent changes before merging
-CODEOWNERS              # protects scope.yaml / guardrails.py from unreviewed changes
-.github/workflows/      # eval-gate CI
-training/               # optional: fine-tune an open model on the playbooks (digestion, not injection)
+scope.yaml                       # human-owned authorization boundary
+security_agent/                  # guardrails, LLM providers, tools, agent loop, CLI
+security_agent/tools_staging/    # draft tools from `cli learn` -- never auto-registered
+knowledge/playbooks/             # built-in OWASP Top 10 methodology (curated, always loaded)
+knowledge/playbooks_staging/     # draft playbooks from `cli learn` -- never auto-loaded
+knowledge/*.md                   # growth memory — notes the agent writes after each run
+reports/                         # per-run markdown reports + audit.jsonl (gitignored)
+evals/                           # regression gate — score agent changes before merging
+CODEOWNERS                       # protects scope.yaml / guardrails.py from unreviewed changes
+.github/workflows/               # eval-gate CI
+training/                        # optional: fine-tune an open model on the playbooks (digestion, not injection)
 ```

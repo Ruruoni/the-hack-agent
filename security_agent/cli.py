@@ -18,6 +18,7 @@ import sys
 
 from .config import load_config
 from .guardrails import Guardrails, ScopeViolation
+from .learning import LearningAgent
 from .loop import SecurityAgent
 from .memory import KnowledgeBase
 
@@ -116,6 +117,14 @@ def main(argv: list[str] | None = None) -> int:
 
     list_p = sub.add_parser("list-playbooks", help="List the curated playbooks loaded into the agent.")
 
+    learn_p = sub.add_parser(
+        "learn",
+        help="Read a repo or document and draft a staged tool/playbook/summary for human review. Never executes or registers anything.",
+    )
+    learn_p.add_argument("source", help="A repo URL (for --type repo) or local file path (for --type document).")
+    learn_p.add_argument("--type", choices=["repo", "document"], default="repo")
+    learn_p.add_argument("-v", "--verbose", action="store_true")
+
     check_p = sub.add_parser("check-scope", help="Validate scope.yaml and exit.")
     check_p.add_argument("-v", "--verbose", action="store_true")
 
@@ -134,6 +143,28 @@ def main(argv: list[str] | None = None) -> int:
         for f in files:
             first_line = f.read_text(encoding="utf-8").splitlines()[0].lstrip("# ")
             print(f"{f.name:40s} {first_line}")
+        return 0
+
+    if args.command == "learn":
+        agent = LearningAgent(config=load_config())
+        if args.type == "repo":
+            report = agent.learn_from_repo(args.source)
+        else:
+            report = agent.learn_from_document(args.source)
+
+        print(f"Source:    {report.source}")
+        print(f"Decision:  {report.decision}")
+        print(f"Reasoning: {report.reasoning}")
+        if report.staged_tool_path:
+            print(f"\nDraft tool staged (NOT registered, NOT executed): {report.staged_tool_path}")
+        if report.staged_playbook_path:
+            print(f"Draft playbook staged (NOT loaded): {report.staged_playbook_path}")
+        print(f"\nKnowledge note: {report.knowledge_note_path}")
+        print(
+            "\nNothing was executed. Nothing was registered into the live tool "
+            "registry. Review the staged files yourself before promoting anything "
+            "-- see security_agent/tools_staging/README.md."
+        )
         return 0
 
     if args.command == "check-scope":
