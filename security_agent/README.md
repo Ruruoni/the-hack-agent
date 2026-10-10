@@ -65,14 +65,20 @@ Every run:
 ## Built-in OWASP knowledge
 
 `knowledge/playbooks/` ships with a curated, human-written methodology
-covering every OWASP Top 10 (2021) category — `00-methodology.md` sets
-the phase order (scope confirmation → passive recon → mapping →
-vulnerability ID → gated exploitation → reporting); `a01` through `a10`
-give basic/intermediate/advanced steps, example commands, and which tool
-to use, for that category. `memory.py` loads all of it, in full, into the
-system prompt every run (`KnowledgeBase.load_playbooks()`), so a freshly
-swapped-in model is already working from this methodology on its very
-first run — nothing to fine-tune, nothing to teach it first.
+covering every OWASP Top 10 (2021) category plus an AI agent/LLM
+extension — `00-methodology.md` sets the phase order (scope confirmation
+→ passive recon → mapping → vulnerability ID → gated exploitation →
+reporting); `a01` through `a11` give basic/intermediate/advanced steps,
+example commands, and which tool to use, for that category.
+`b01-governance-compliance-mapping.md` adds the defensive/governance
+lens on top: how to map every finding to **NIST CSF 2.0**, **ISO/IEC
+27001:2022**, **CIS Controls v8**, and **PCI DSS v4.0**, and ground it in
+real-world attacker behavior (breach macro-patterns and MITRE ATT&CK
+technique IDs) — the reporting template the agent uses for every
+finding. `memory.py` loads all of it, in full, into the system prompt
+every run (`KnowledgeBase.load_playbooks()`), so a freshly swapped-in
+model is already working from this methodology on its very first run —
+nothing to fine-tune, nothing to teach it first.
 
 This is separate from the growth notes (next section): the playbooks are
 curated and reviewed like code; the growth notes are what the agent

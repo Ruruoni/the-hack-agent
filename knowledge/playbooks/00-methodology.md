@@ -35,11 +35,15 @@ and ground rules that tie them together.
    `scope.yaml: require_human_approval_for` and `guardrails.py` will block
    on a human prompt — propose it, don't assume it will be approved, and
    never chain it into further automated action.
-6. **Reporting.** For each finding: title, OWASP category, affected
-   endpoint/parameter, evidence, severity (use CVSS-style
-   Critical/High/Medium/Low/Info), and concrete remediation. Write this
-   into the run report; `security_agent/memory.py` also keeps a short note
-   in `knowledge/` so the same ground isn't re-covered blindly next run.
+6. **Reporting.** For each finding, use `b01-governance-compliance-mapping.md`'s
+   template: title, OWASP/category, evidence, severity (CVSS-style
+   Critical/High/Medium/Low/Info), breach macro-pattern, MITRE ATT&CK
+   tactic/technique, NIST CSF 2.0 function, ISO 27001:2022 Annex A
+   clause, CIS Control v8 (+ Implementation Group), PCI DSS v4.0
+   requirement (or "not applicable"), and concrete remediation. Write
+   this into the run report; `security_agent/memory.py` also keeps a
+   short note in `knowledge/` so the same ground isn't re-covered
+   blindly next run.
 
 ## Basic → advanced, in one sentence per level
 
