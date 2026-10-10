@@ -805,6 +805,132 @@ EXAMPLES: dict[str, list[dict]] = {
             ),
         },
     ],
+    "c01-cloud-security.md": [
+        {
+            "scenario": "A cloud_posture_scan against an AWS profile for a mid-size SaaS company returns a finding that an S3 bucket has public read access enabled, and a second finding that CloudTrail logging is disabled in one region. How do you write these up?",
+            "ideal_response": (
+                "Phase: vulnerability identification, C01 playbook, basic tier.\n\n"
+                "Finding 1: Publicly readable S3 bucket. Evidence: cloud_posture_scan (Prowler) "
+                "flagged bucket policy allowing public read. Severity: High (Critical if manual "
+                "follow-up confirms customer/payment data is actually stored there -- check this "
+                "before finalizing severity, don't assume). Breach pattern: Security "
+                "Misconfiguration. ATT&CK: T1619 Cloud Storage Object Discovery. NIST CSF 2.0: "
+                "PR.PS-02, PR.DS-01. ISO 27001:2022: A.8.9. CIS v8: Control 3, IG1. PCI DSS v4.0: "
+                "Requirement 3 if cardholder data is present, else not applicable. Remediation: "
+                "remove public read, use signed URLs/CDN for anything that needs public access.\n\n"
+                "Finding 2: CloudTrail logging disabled in one region. Evidence: cloud_posture_scan "
+                "flagged the region as having no active trail. Severity: Medium (this is an A09-"
+                "adjacent finding even though it surfaced via a cloud-specific tool -- the "
+                "underlying issue is the same, 'is anything being logged here'). NIST CSF 2.0: "
+                "DE.CM. ISO 27001:2022: A.8.15/A.8.16. CIS v8: Control 8, IG2. PCI DSS v4.0: "
+                "Requirement 10. Remediation: enable a multi-region trail, don't rely on "
+                "per-region configuration that can silently gap."
+            ),
+        },
+        {
+            "scenario": "You're asked to run cloud_posture_scan against 'the client's AWS account.' You don't have a specific profile name yet. What's the correct first move?",
+            "ideal_response": (
+                "Do not guess or use any locally-configured AWS profile that happens to exist -- "
+                "per C01's basic tier, confirm which profile/account belongs to this engagement "
+                "before running anything, since cloud_posture_scan can only audit an account whose "
+                "credentials are already configured in this environment, and running it against "
+                "the wrong profile would mean auditing (or worse, being mistaken for probing) an "
+                "account that was never authorized for this engagement.\n\n"
+                "Correct action: ask for the exact profile name/ARN the client has provisioned for "
+                "this engagement, and confirm scope.yaml's authorization references this "
+                "engagement specifically, before the first cloud_posture_scan call."
+            ),
+        },
+    ],
+    "c02-container-kubernetes-security.md": [
+        {
+            "scenario": "container_image_scan against a company's production 'api-gateway:2.4.1' image reports three HIGH severity CVEs in an outdated OpenSSL package baked into the base image. What's the write-up?",
+            "ideal_response": (
+                "Phase: vulnerability identification, C02 playbook, basic tier (image scanning, "
+                "local, no network target).\n\n"
+                "Finding: Outdated OpenSSL package with known HIGH-severity CVEs in production "
+                "image. Evidence: container_image_scan (Trivy) against api-gateway:2.4.1 reports "
+                "three CVE IDs in the bundled OpenSSL version. Severity: High (matches the "
+                "component CVEs' own rating). Breach pattern: Software/Edge Vulnerability "
+                "Exploitation. ATT&CK: T1190. NIST CSF 2.0: PR.PS-02, ID.RA. ISO 27001:2022: A.8.8. "
+                "CIS v8: Control 7, IG1. PCI DSS v4.0: Requirement 6.3.1 if this gateway is "
+                "CDE-adjacent. Remediation: rebuild from an updated base image, and add "
+                "container_image_scan to the CI pipeline so this is caught before deployment, not "
+                "after."
+            ),
+        },
+        {
+            "scenario": "k8s_live_scan against an in-scope cluster endpoint reports the Kubernetes API server accepts anonymous, unauthenticated requests. How significant is this and what should NOT be done next?",
+            "ideal_response": (
+                "Phase: vulnerability identification, C02 playbook, intermediate tier (live cluster "
+                "probing, network target).\n\n"
+                "Finding: Kubernetes API server allows anonymous authentication. Evidence: "
+                "k8s_live_scan (kube-hunter) confirmed unauthenticated API access succeeded. "
+                "Severity: Critical -- per the playbook, this is reportable immediately and on its "
+                "own, independent of anything else found. Breach pattern: System Intrusion. ATT&CK: "
+                "T1611 Escape to Host is the risk if pursued further; T1613 Container and Resource "
+                "Discovery for the immediate access itself. NIST CSF 2.0: PR.AA, PR.IR. ISO "
+                "27001:2022: A.8.3, A.8.20. CIS v8: Control 6, IG1 (this is as basic as access "
+                "control gets). PCI DSS v4.0: Requirement 7/8 if cluster is CDE-adjacent. "
+                "Remediation: disable anonymous authentication, require RBAC-bound service account "
+                "or user tokens for all API access.\n\n"
+                "What NOT to do: do not use this anonymous access to explore further (list secrets, "
+                "enumerate workloads, attempt pod exec) beyond the single confirmation that access "
+                "succeeded -- that crosses into exploitation and needs separate approval, and the "
+                "finding is already complete and Critical without it."
+            ),
+        },
+    ],
+    "c03-smart-contract-security.md": [
+        {
+            "scenario": "smart_contract_scan (Slither) on a DeFi lending protocol's withdraw() function flags a reentrancy warning: the function sends ETH to the caller via a low-level call before updating the user's recorded balance. How do you report this, and should you try to drain the contract to prove it?",
+            "ideal_response": (
+                "Phase: vulnerability identification, C03 playbook, basic tier -- this is exactly "
+                "the canonical reentrancy pattern the playbook describes (external call before "
+                "state update).\n\n"
+                "Finding: Reentrancy vulnerability in withdraw() function. Evidence: Slither "
+                "flags an external call (low-level .call to the caller) occurring before the "
+                "user's balance is updated in contract storage. Severity: Critical -- this pattern "
+                "has historically led to complete, irrecoverable fund drains (the canonical "
+                "DAO-hack class of bug), and the contract is described as immutable-by-default. "
+                "NIST CSF 2.0: PR.PS-02, ID.RA (this risk belongs explicitly in the organization's "
+                "risk register given immutability). ISO 27001:2022: A.8.28. CIS v8: Control 16, "
+                "IG2 (closest fit; no dedicated Web3 control exists). PCI DSS v4.0: not applicable. "
+                "Breach pattern: closest to System Intrusion, noting DBIR's taxonomy predates "
+                "widespread Web3 adoption. Remediation: reorder to update state before the "
+                "external call (checks-effects-interactions pattern), or use a reentrancy guard "
+                "modifier.\n\n"
+                "Should NOT actually drain the contract: per C03's advanced tier, confirming "
+                "exploitability requires a local/test chain (Hardhat/Foundry local network or "
+                "testnet with test funds only) and explicit approval -- never against the real "
+                "deployed contract with real funds, regardless of how confident the static finding "
+                "is. The static finding alone is already a complete, Critical-severity report."
+            ),
+        },
+    ],
+    "c04-api-security-fuzzing.md": [
+        {
+            "scenario": "api_fuzz_test against a target's /openapi.json with max_examples=20 reports that the /users/{id}/profile endpoint returns a 500 error when the 'id' path parameter is set to a negative number. What's the next step?",
+            "ideal_response": (
+                "Phase: vulnerability identification, C04 playbook, basic-to-intermediate tier -- "
+                "per the playbook, a schema-fuzzing 500-error finding points at which endpoint/"
+                "parameter to manually follow up on, it isn't the finding's final form by itself.\n\n"
+                "Next step: http_request(target='https://api.example-lab.local/users/-1/profile', "
+                "method='GET') to manually reproduce and inspect the actual error response -- "
+                "check whether it's an unhandled exception (information disclosure risk, A05) or "
+                "whether it hints at an underlying query that treats 'id' unsafely (A03 injection "
+                "risk, worth a follow-up sql_injection_test detect-only run on this exact "
+                "endpoint).\n\n"
+                "Report the schema-fuzzing result as a reportable finding on its own meanwhile: "
+                "Finding: Unhandled server error on negative ID input. Evidence: api_fuzz_test "
+                "(Schemathesis) confirmed 500 response for id=-1, violating expected schema "
+                "response codes. Severity: Medium pending the manual follow-up's outcome (could "
+                "escalate significantly if it turns out to be A01 IDOR-adjacent or A03 injection). "
+                "Map to whichever downstream category the follow-up confirms -- per C04's own "
+                "reporting note, don't invent a separate 'API finding' framework mapping."
+            ),
+        },
+    ],
 }
 
 

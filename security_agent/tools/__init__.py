@@ -1,11 +1,15 @@
 from .ai_redteam import AiAgentRedTeamTool
+from .api_fuzz import ApiFuzzTool
 from .base import Tool, ToolRegistry, ToolResult
 from .bruteforce import DirectoryBruteforceTool
+from .cloud_posture import CloudPostureScanTool
+from .container_security import ContainerImageScanTool, K8sLiveScanTool
 from .http_request import HttpRequestTool
 from .injection import SqlInjectionTestTool
 from .jwt_analysis import JwtAnalyzeTool
 from .recon import HttpProbeTool, PortScanTool, SubdomainEnumTool
 from .sast import SastScanTool, SecretScanTool
+from .smart_contract import SmartContractScanTool
 from .tls import TlsScanTool
 from .webscan import WebVulnScanTool
 
@@ -25,9 +29,14 @@ def build_default_registry() -> ToolRegistry:
         HttpRequestTool,
         SqlInjectionTestTool,  # detect-only unless dump=True (then exploitation, approval-gated)
         AiAgentRedTeamTool,  # prompt-injection/jailbreak probes against an AI agent/LLM target
-        # local source analysis
+        K8sLiveScanTool,  # live cluster network endpoint
+        ApiFuzzTool,  # schema-driven API fuzzing
+        # local source / credentialed audit (authorize_local_action, no network target)
         SastScanTool,
         SecretScanTool,
+        CloudPostureScanTool,  # audits your own cloud account via local credentials
+        ContainerImageScanTool,  # image/IaC scan, read-only inspection
+        SmartContractScanTool,  # local Solidity source
     ):
         registry.register(tool_cls())
     return registry

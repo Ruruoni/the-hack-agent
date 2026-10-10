@@ -5,6 +5,7 @@ and check for exposed admin panels"
 
     python -m security_agent.cli owasp-scan juice.example-lab.local
     python -m security_agent.cli owasp-scan juice.example-lab.local --category a03
+    python -m security_agent.cli specialized-scan my-aws-profile --category c01
     python -m security_agent.cli list-playbooks
 
 Refuses to run at all unless scope.yaml has authorized: true.
@@ -34,6 +35,13 @@ OWASP_CATEGORIES = {
     "a11": "AI Agent / LLM Security (extension, not in OWASP's official Top 10)",
 }
 
+SPECIALIZED_CATEGORIES = {
+    "c01": "Cloud Security (AWS/Azure/GCP/Kubernetes posture)",
+    "c02": "Container & Kubernetes Security",
+    "c03": "Smart Contract / Web3 Security",
+    "c04": "API Security & Schema-Based Fuzzing",
+}
+
 
 def _build_owasp_objective(target: str, category: str | None) -> str:
     if category:
@@ -59,6 +67,23 @@ def _build_owasp_objective(target: str, category: str | None) -> str:
     )
 
 
+def _build_specialized_objective(target: str, category: str) -> str:
+    key = category.lower()
+    name = SPECIALIZED_CATEGORIES.get(key)
+    if not name:
+        raise ValueError(
+            f"Unknown category '{category}'. Valid: {', '.join(SPECIALIZED_CATEGORIES)}"
+        )
+    return (
+        f"Run the {key.upper()} ({name}) playbook against '{target}', "
+        f"following knowledge/playbooks/{key}-*.md. For c01/c03, '{target}' is "
+        f"a local credential profile or source path, not a network host -- "
+        f"use authorize_local_action-backed tools accordingly. For c02/c04, "
+        f"treat it as a network target and confirm it is in scope.yaml first. "
+        f"Report findings with severity and remediation."
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="security_agent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -77,6 +102,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     owasp_p.add_argument("--non-interactive", action="store_true")
     owasp_p.add_argument("-v", "--verbose", action="store_true")
+
+    specialized_p = sub.add_parser(
+        "specialized-scan",
+        help="Run a cloud/container/smart-contract/API-fuzzing playbook (c01-c04).",
+    )
+    specialized_p.add_argument(
+        "target", help="Network target, local credential profile, or source path, depending on category."
+    )
+    specialized_p.add_argument("--category", required=True, choices=sorted(SPECIALIZED_CATEGORIES))
+    specialized_p.add_argument("--non-interactive", action="store_true")
+    specialized_p.add_argument("-v", "--verbose", action="store_true")
 
     list_p = sub.add_parser("list-playbooks", help="List the curated playbooks loaded into the agent.")
 
@@ -109,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         print("scope.yaml is valid and authorized.")
         return 0
 
-    if args.command in ("run", "owasp-scan"):
+    if args.command in ("run", "owasp-scan", "specialized-scan"):
         config = load_config()
         config.require_human_approval_default = not args.non_interactive
         try:
@@ -118,14 +154,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"REFUSING TO START: {exc}", file=sys.stderr)
             return 1
 
-        if args.command == "owasp-scan":
-            try:
+        try:
+            if args.command == "owasp-scan":
                 objective = _build_owasp_objective(args.target, args.category)
-            except ValueError as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
-        else:
-            objective = args.objective
+            elif args.command == "specialized-scan":
+                objective = _build_specialized_objective(args.target, args.category)
+            else:
+                objective = args.objective
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
 
         report = agent.run(objective)
         print(report.render())

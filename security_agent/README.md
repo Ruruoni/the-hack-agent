@@ -98,12 +98,22 @@ itself writes after each run.
 | `http_request` | active_scanning | manual probes: CORS, IDOR, SSRF setup |
 | `sql_injection_test` (sqlmap) | active_scanning, or **exploitation** if `dump=True` | A03 injection |
 | `ai_agent_redteam` (hackagent) | active_scanning | A11, prompt injection/jailbreak probes against AI agent/LLM targets |
+| `k8s_live_scan` (kube-hunter) | active_scanning | C02, live Kubernetes cluster network target |
+| `api_fuzz_test` (Schemathesis) | active_scanning | C04, schema-driven API fuzzing |
 | `sast_scan` (semgrep) | local | source-level review |
 | `secret_scan` (gitleaks) | local | leaked credentials |
+| `cloud_posture_scan` (Prowler) | local (credentialed audit, no network target) | C01, AWS/Azure/GCP/K8s misconfig |
+| `container_image_scan` (Trivy) | local (read-only image/IaC inspection) | C02, container image & IaC scanning |
+| `smart_contract_scan` (Slither) | local (source analysis) | C03, Solidity vulnerability classes |
 
-`hackagent` (https://github.com/AISecurityLab/hackagent, Apache-2.0) is
-an optional dependency — `pip install hackagent` — not vendored into
-this repo; see `knowledge/playbooks/a11-ai-agent-llm-security.md`.
+All of the above are optional external dependencies — a missing binary
+makes that one tool refuse with a clear message, nothing is vendored
+into this repo. Sources: `hackagent` (AISecurityLab/hackagent,
+Apache-2.0), Prowler (prowler-cloud/prowler, Apache-2.0), Trivy and
+kube-hunter (aquasecurity, Apache-2.0), Slither (crytic/slither,
+AGPL-3.0), Schemathesis (schemathesis/schemathesis, MIT). See
+`knowledge/playbooks/a11-*.md` and `c01-*.md` through `c04-*.md` for
+how each is used.
 
 ## Self-growth, safely
 
@@ -130,7 +140,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-74 tests covering `guardrails.py` (scope/budget/approval enforcement —
+81 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted

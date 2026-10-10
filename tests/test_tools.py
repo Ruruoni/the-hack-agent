@@ -57,8 +57,13 @@ def test_default_registry_has_expected_tools():
         "http_request",
         "sql_injection_test",
         "ai_agent_redteam",
+        "k8s_live_scan",
+        "api_fuzz_test",
         "sast_scan",
         "secret_scan",
+        "cloud_posture_scan",
+        "container_image_scan",
+        "smart_contract_scan",
     ):
         assert expected in names
 
@@ -161,3 +166,88 @@ def test_sql_injection_dump_mode_blocked_even_if_exploitation_disallowed(make_sc
     tool = SqlInjectionTestTool()
     with pytest.raises(ScopeViolation):
         tool.run(g, target="app.example-lab.local/item?id=1", dump=True)
+
+
+# ---------------------------------------------------- cloud/container/web3/API tools
+
+
+def test_cloud_posture_scan_uses_local_action_not_domain_scope(guardrails):
+    # profile_or_account is a credential identifier, not a network host --
+    # it must not be checked against allowed_domains/allowed_cidrs.
+    from security_agent.tools.cloud_posture import CloudPostureScanTool
+
+    tool = CloudPostureScanTool()
+    result = tool.run(guardrails, provider="aws", profile_or_account="not-a-hostname-at-all")
+    # Should reach the "not installed" branch, not a ScopeViolation.
+    assert result.ok is False
+    assert "not installed" in result.summary
+
+
+def test_container_image_scan_uses_local_action(guardrails, monkeypatch):
+    from security_agent.tools.container_security import ContainerImageScanTool
+
+    tool = ContainerImageScanTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+    monkeypatch.setattr(tool, "_run_subprocess", lambda cmd, timeout=600: (0, '{"Results": []}', ""))
+    result = tool.run(guardrails, target="myapp:1.2.3")
+    assert result.ok is True
+
+
+def test_k8s_live_scan_is_network_target_and_scope_checked(guardrails):
+    from security_agent.tools.container_security import K8sLiveScanTool
+
+    tool = K8sLiveScanTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(guardrails, target="not-in-scope-cluster.evil.com")
+
+
+def test_k8s_live_scan_runs_against_in_scope_target(monkeypatch, guardrails):
+    from security_agent.tools.container_security import K8sLiveScanTool
+
+    tool = K8sLiveScanTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+    monkeypatch.setattr(tool, "_run_subprocess", lambda cmd, timeout=900: (0, "no issues found", ""))
+    result = tool.run(guardrails, target="10.10.10.5")
+    assert result.ok is True
+
+
+def test_smart_contract_scan_uses_local_action(guardrails, monkeypatch):
+    from security_agent.tools.smart_contract import SmartContractScanTool
+
+    tool = SmartContractScanTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+    monkeypatch.setattr(tool, "_run_subprocess", lambda cmd, timeout=600: (1, "[]", ""))
+    result = tool.run(guardrails, path="/local/contracts/Vault.sol")
+    # Slither exits non-zero when findings exist -- that must still be ok=True.
+    assert result.ok is True
+
+
+def test_api_fuzz_test_is_network_target_and_caps_max_examples(monkeypatch, guardrails):
+    from security_agent.tools.api_fuzz import ApiFuzzTool
+
+    tool = ApiFuzzTool()
+    monkeypatch.setattr(tool, "available", lambda: True)
+
+    captured_cmd = {}
+
+    def fake_run(cmd, timeout=600):
+        captured_cmd["cmd"] = cmd
+        return (0, "all checks passed", "")
+
+    monkeypatch.setattr(tool, "_run_subprocess", fake_run)
+    result = tool.run(
+        guardrails,
+        schema_url="https://app.example-lab.local/openapi.json",
+        max_examples=99999,  # should be clamped, never passed through unbounded
+    )
+    assert result.ok is True
+    idx = captured_cmd["cmd"].index("--max-examples")
+    assert int(captured_cmd["cmd"][idx + 1]) <= 200
+
+
+def test_api_fuzz_test_refuses_out_of_scope_schema(guardrails):
+    from security_agent.tools.api_fuzz import ApiFuzzTool
+
+    tool = ApiFuzzTool()
+    with pytest.raises(ScopeViolation):
+        tool.run(guardrails, schema_url="https://evil.com/openapi.json")

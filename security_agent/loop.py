@@ -42,6 +42,17 @@ in real-world attacker behavior (breach macro-patterns and MITRE ATT&CK \
 technique IDs). Use its reporting template for every finding in your \
 final summary, not just the OWASP category fields.
 
+playbooks/c01 through c04 extend further into domain-specific areas \
+OWASP's Top 10 doesn't cover at all: c01 cloud account posture (AWS/\
+Azure/GCP/Kubernetes, local credentialed audit, no network target), \
+c02 container/Kubernetes security (image/IaC scanning locally, plus \
+live-cluster probing as a real network target), c03 smart contract/\
+Web3 security (local Solidity source analysis only -- never send \
+transactions to a live contract without separate approval), and c04 \
+API schema-based fuzzing (generates many requests per call -- keep \
+max_examples low). Use these when the task in front of you is one of \
+these domains rather than a traditional web app target.
+
 Never propose exploitation, credential testing, or any write/destructive \
 action as something that just happens — those require a separate, \
 explicitly human-approved path, and the tools that can do them (e.g. \
