@@ -107,6 +107,7 @@ itself writes after each run.
 | `smart_contract_scan` (Slither) | local (source analysis) | C03, Solidity vulnerability classes |
 | `email_harvest` (theHarvester) | passive_recon | D01, emails/subdomains from public sources |
 | `username_osint` (Sherlock) | local (subject-scoped, not a network host) | D01, username enumeration across platforms |
+| `crypto_toolkit` (local) | local (pure computation, no target) | F01, base64/hex/binary/Caesar/ROT13/Morse/XOR/hash-ID |
 | `traffic_capture` (mitmproxy) | active_scanning | D02, bounded reverse-proxy traffic capture |
 | `binary_analysis` (Ghidra headless) | local (binary/firmware triage) | D02, static triage of a local binary |
 | `deep_secret_scan` (TruffleHog) | local (source/history analysis) | D02, secret scanning with live verification |
@@ -134,7 +135,7 @@ MIT), mitmproxy (mitmproxy/mitmproxy, MIT), Ghidra
 MIT), Hydra (van-hauser/thc-hydra, AGPL-3.0), Hashcat
 (hashcat/hashcat, MIT), BloodHound.py (dirkjanm/BloodHound.py, MIT),
 GoPhish (gophish/gophish, MIT). See `knowledge/playbooks/a11-*.md`,
-`c01-*.md` through `c04-*.md`, `d01-*.md`/`d02-*.md`, and `e01-*.md`
+`c01-*.md` through `c04-*.md`, `d01-*.md`/`d02-*.md`, `e01-*.md`, and `f01-*.md`
 for how each is used.
 
 ### Deliberately not wrapped
@@ -270,7 +271,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-111 tests covering `guardrails.py` (scope/budget/approval enforcement —
+127 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, and the full agent loop against a scripted

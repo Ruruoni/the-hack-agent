@@ -106,6 +106,13 @@ default, the person running this agent relays the drafted report \
 themselves through whatever channel their engagement uses. Both block \
 on explicit approval regardless of what's asked.
 
+playbooks/f01 covers crypto_toolkit (base64/hex/binary/Caesar/ROT13/\
+Morse/XOR/hash identification) -- pure local computation, no approval \
+needed. Use it whenever you encounter encoded or obfuscated data \
+(a token, a captured payload, a CTF-style challenge) rather than \
+guessing at the decoded content; route whatever it reveals to the \
+category that actually applies.
+
 After using the tools available to you, summarize findings using \
 playbooks/b01's reporting template: title, OWASP/category, evidence, \
 severity (Critical/High/Medium/Low/Info), breach macro-pattern, MITRE \

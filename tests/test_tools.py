@@ -68,6 +68,7 @@ def test_default_registry_has_expected_tools():
         "username_osint",
         "traffic_capture",
         "binary_analysis",
+        "crypto_toolkit",
         "deep_secret_scan",
         "fast_port_scan",
         "packet_capture",
@@ -795,3 +796,68 @@ def test_submit_bug_report_refuses_missing_report_file(guardrails):
     result = tool.run(guardrails, report_file="/definitely/not/a/real/file.md", method="email")
     assert result.ok is False
     assert "does not exist" in result.summary
+
+
+# ------------------------------------------------------------------- crypto_toolkit
+
+
+@pytest.mark.parametrize(
+    "operation,text,kwargs,expected",
+    [
+        ("base64_encode", "hello world", {}, "aGVsbG8gd29ybGQ="),
+        ("base64_decode", "aGVsbG8gd29ybGQ=", {}, "hello world"),
+        ("hex_encode", "hi", {}, "6869"),
+        ("hex_decode", "6869", {}, "hi"),
+        ("caesar_encode", "attack at dawn", {"shift": 3}, "dwwdfn dw gdzq"),
+        ("caesar_decode", "dwwdfn dw gdzq", {"shift": 3}, "attack at dawn"),
+        ("rot13", "Hello", {}, "Uryyb"),
+        ("morse_encode", "SOS", {}, "... --- ..."),
+        ("morse_decode", "... --- ...", {}, "SOS"),
+        ("identify_hash", "5d41402abc4b2a76b9719d911017c592", {}, "MD5 or NTLM (32 hex chars)"),
+    ],
+)
+def test_crypto_toolkit_operations(guardrails, operation, text, kwargs, expected):
+    from security_agent.tools.crypto_toolkit import CryptoToolkitTool
+
+    result = CryptoToolkitTool().run(guardrails, operation=operation, text=text, **kwargs)
+    assert result.ok is True
+    assert result.summary == expected
+
+
+def test_crypto_toolkit_xor_round_trips(guardrails):
+    from security_agent.tools.crypto_toolkit import CryptoToolkitTool
+
+    tool = CryptoToolkitTool()
+    encrypted = tool.run(guardrails, operation="xor", text="secret", key="k")
+    assert encrypted.ok is True
+    # xor is its own inverse: feed the hex back through xor with the same
+    # key via the raw helper to confirm the round trip holds.
+    from security_agent.tools.crypto_toolkit import _xor
+
+    decrypted = _xor(bytes.fromhex(encrypted.summary), b"k")
+    assert decrypted == b"secret"
+
+
+def test_crypto_toolkit_identify_hash_rejects_non_hex(guardrails):
+    from security_agent.tools.crypto_toolkit import CryptoToolkitTool
+
+    result = CryptoToolkitTool().run(guardrails, operation="identify_hash", text="not-a-hash!!")
+    assert result.ok is True
+    assert "Not a hex string" in result.summary
+
+
+def test_crypto_toolkit_rejects_unknown_operation(guardrails):
+    from security_agent.tools.crypto_toolkit import CryptoToolkitTool
+
+    result = CryptoToolkitTool().run(guardrails, operation="rot47", text="x")
+    assert result.ok is False
+    assert "Unknown operation" in result.summary
+
+
+def test_crypto_toolkit_needs_no_network_scope_check(guardrails):
+    # Pure local computation -- must work even though no domains/CIDRs
+    # are allow-listed at all, since it never checks a network target.
+    from security_agent.tools.crypto_toolkit import CryptoToolkitTool
+
+    result = CryptoToolkitTool().run(guardrails, operation="rot13", text="test")
+    assert result.ok is True

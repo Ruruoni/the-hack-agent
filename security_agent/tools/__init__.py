@@ -8,6 +8,7 @@ from .bug_report import FormatBugReportTool, SubmitBugReportTool
 from .cloud_posture import CloudPostureScanTool
 from .container_security import ContainerImageScanTool, K8sLiveScanTool
 from .credential_attacks import CredentialTestTool, HashCrackTool
+from .crypto_toolkit import CryptoToolkitTool
 from .deep_secrets import DeepSecretScanTool
 from .fast_scan import FastPortScanTool
 from .http_request import HttpRequestTool
@@ -66,6 +67,7 @@ def build_default_registry() -> ToolRegistry:
         SmartContractScanTool,  # local Solidity source
         BinaryAnalysisTool,  # local binary/firmware triage via Ghidra headless
         UsernameOsintTool,  # username/subject-scoped, not a network host
+        CryptoToolkitTool,  # base64/hex/Caesar/Morse/XOR/hash-ID, pure local computation
     ):
         registry.register(tool_cls())
     return registry

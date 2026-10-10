@@ -1180,6 +1180,53 @@ EXAMPLES: dict[str, list[dict]] = {
             ),
         },
     ],
+    "f01-cryptography-and-encoding-analysis.md": [
+        {
+            "scenario": "While reviewing captured traffic (via traffic_capture), a custom header contains the value 'dGhlX3JlYWxfYWRtaW5fcGFuZWxfaXNfL2ludGVybmFsLWN0cmw='. What's the right next step?",
+            "ideal_response": (
+                "Phase: F01 playbook, basic tier -- the value is padded with '=' and limited to "
+                "base64's character set, so it's almost certainly base64.\n\n"
+                "Tool call: crypto_toolkit(operation='base64_decode', "
+                "text='dGhlX3JlYWxfYWRtaW5fcGFuZWxfaXNfL2ludGVybmFsLWN0cmw=').\n\n"
+                "If this decodes to something like 'the_real_admin_panel_is_/internal-ctrl', that's "
+                "not itself the finding -- it's evidence pointing at an A05 (security "
+                "misconfiguration) finding: an internal admin path referenced in a custom header, "
+                "suggesting a hidden endpoint worth a follow-up directory_bruteforce/http_request "
+                "check at that specific path. Route the eventual finding to A05, not to F01 -- F01 "
+                "was just how the path was found."
+            ),
+        },
+        {
+            "scenario": "A CTF-style challenge embedded in a target gives you the string '.... . .-.. .-.. ---' and nothing else. What do you do, and is this itself a reportable finding on a real engagement?",
+            "ideal_response": (
+                "Tool call: crypto_toolkit(operation='morse_decode', "
+                "text='.... . .-.. .-.. ---') -- the pattern of only dots, dashes, and spaces is "
+                "the Morse code signature.\n\n"
+                "This decodes to 'HELLO'. On an actual engagement (not a dedicated CTF-training "
+                "lab), a Morse-encoded Easter egg string by itself usually isn't a security "
+                "finding -- it's often leftover debug/developer content. Report it as informational "
+                "only if it reveals something sensitive (an internal note, a credential, a path) "
+                "once decoded; if it's just a greeting or Easter egg, it's not worth a line in the "
+                "findings section at all. Not every decode operation produces a reportable finding, "
+                "and F01 doesn't require pretending one does."
+            ),
+        },
+        {
+            "scenario": "secret_scan/deep_secret_scan surfaces a 64-character hex string stored in a config file next to a field named 'password_hash'. Before proposing hash_crack (E01), what should happen first?",
+            "ideal_response": (
+                "Tool call: crypto_toolkit(operation='identify_hash', text='<the 64-char hex "
+                "string>') -- this identifies it as consistent with SHA-256 (64 hex chars).\n\n"
+                "This matters before proposing hash_crack because the Hashcat -m mode number "
+                "depends entirely on knowing the algorithm (SHA-256 is a different mode than MD5 or "
+                "NTLM) -- proposing hash_crack with a guessed, wrong mode would waste the approval "
+                "request on a call that cannot succeed. It's also worth noting explicitly: a bare "
+                "SHA-256 hash with no visible salt is itself a finding independent of whether "
+                "cracking succeeds (SHA-256 without salting/a slow KDF like bcrypt/argon2 is weak "
+                "password storage, per A02's cryptographic-failures playbook) -- report that "
+                "finding regardless of whether hash_crack is pursued afterward."
+            ),
+        },
+    ],
 }
 
 
