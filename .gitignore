@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+*.log
+
+# security_agent run artifacts — audit log and per-run reports stay local
+# unless you deliberately want to commit them for a record.
+reports/*.md
+reports/audit.jsonl

@@ -1,0 +1,34 @@
+name: security-agent-eval-gate
+
+# Runs the regression gate against your own lab targets before any PR
+# touching security_agent/, scope.yaml, or knowledge/ is allowed to merge.
+# Configure AGENT_LLM_* secrets for your chosen free/local provider and
+# point evals/targets.yaml + scope.yaml at a lab you actually control.
+on:
+  pull_request:
+    paths:
+      - "security_agent/**"
+      - "scope.yaml"
+      - "knowledge/**"
+      - "evals/**"
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r security_agent/requirements.txt pyyaml
+
+      - name: Run eval gate against lab targets
+        env:
+          AGENT_LLM_PROVIDER: ${{ vars.AGENT_LLM_PROVIDER || 'groq' }}
+          AGENT_LLM_MODEL: ${{ vars.AGENT_LLM_MODEL }}
+          AGENT_LLM_BASE_URL: ${{ vars.AGENT_LLM_BASE_URL }}
+          AGENT_LLM_API_KEY: ${{ secrets.AGENT_LLM_API_KEY }}
+        run: python -m evals.run_eval

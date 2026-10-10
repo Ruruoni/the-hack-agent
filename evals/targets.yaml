@@ -1,0 +1,13 @@
+# Deliberately-vulnerable lab targets used to score the agent before any
+# self-improvement change (new tool, new prompt, new knowledge note) is
+# merged. Point these at your own local lab (DVWA, Juice Shop, a
+# HackTheBox-style VM) — never at third-party infrastructure.
+#
+# expected_findings entries are substrings the final report/findings must
+# contain for the run to count as a pass on that case.
+cases:
+  - name: "juice-shop-smoke-test"
+    objective: "Run passive recon and a safe web vuln scan against juice.example-lab.local and summarize findings."
+    target: "juice.example-lab.local"
+    expected_findings:
+      - "recon"

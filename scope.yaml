@@ -1,0 +1,58 @@
+# =============================================================================
+# AUTHORIZATION SCOPE — the single source of truth for what the security agent
+# is allowed to touch.
+#
+# This file is enforced IN CODE (security_agent/guardrails.py), not just read
+# by the model. Every tool call is checked against it before anything runs.
+# A target that is not listed here is refused, regardless of what the model
+# decides to do.
+#
+# This file should be protected via CODEOWNERS / branch protection so the
+# agent cannot edit its own authorization boundary. See CODEOWNERS.
+# =============================================================================
+
+# Human sign-off. Leave authorized: false until you have written permission
+# (a signed engagement letter, a bug-bounty program's rules, or ownership of
+# the asset) to test every target listed below. The agent refuses to run
+# anything while this is false.
+authorized: false
+authorized_by: ""          # your name / handle
+authorization_reference: "" # link or doc id for the written authorization
+authorized_until: ""        # ISO date; empty = no expiry set (not recommended)
+
+# Targets the agent may act against. Supports exact domains, domain
+# wildcards, and CIDR ranges. Keep this list as narrow as possible.
+targets:
+  allowed_domains:
+    - "*.example-lab.local"     # replace with your real, owned lab/target
+  allowed_cidrs:
+    - "10.10.10.0/24"           # e.g. a local lab network / HTB-style range
+  denied_domains: []             # always wins over an allowed match
+  denied_cidrs: []
+
+# Time window the agent may actively run in (optional). Empty = unrestricted.
+allowed_hours_utc: []           # e.g. ["02:00-06:00"]
+
+# Rules of engagement enforced by guardrails.py, not just documented here.
+rules_of_engagement:
+  allow_passive_recon: true       # DNS, WHOIS, cert transparency, port scans
+  allow_active_scanning: true     # web/app vuln scanners (nuclei, etc.)
+  allow_exploitation: false       # requires per-run human approval even if true
+  allow_destructive_actions: false  # never allowed by this agent, full stop
+  allow_denial_of_service: false    # never allowed by this agent, full stop
+  max_requests_per_second: 5
+  max_concurrent_targets: 1
+
+# Budget caps, independent of rules of engagement.
+budgets:
+  max_tool_calls_per_run: 200
+  max_runtime_minutes: 60
+  max_llm_tokens_per_run: 2000000
+
+# Anything in this list always requires an explicit human "approve" before
+# the agent executes it, even if rules_of_engagement allows the category.
+require_human_approval_for:
+  - exploitation
+  - any_write_to_target
+  - credential_testing
+  - self_modification_pr

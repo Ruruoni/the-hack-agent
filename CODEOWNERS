@@ -1,0 +1,9 @@
+# Files the agent must never be able to merge changes to without a human
+# review — the authorization boundary and the enforcement code behind it.
+# Replace @your-github-handle with your actual GitHub username/team before
+# relying on this, and enable branch protection requiring this review.
+
+/scope.yaml                        @your-github-handle
+/security_agent/guardrails.py      @your-github-handle
+/CODEOWNERS                        @your-github-handle
+/.github/workflows/                @your-github-handle
