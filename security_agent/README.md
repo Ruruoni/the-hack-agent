@@ -21,6 +21,16 @@ enforced by `scope.yaml` and `guardrails.py` — not by trusting the model.
      `ollama pull qwen2.5:14b`.
    - Free, hosted: `AGENT_LLM_PROVIDER=groq`, `AGENT_LLM_BASE_URL=https://api.groq.com/openai`,
      `AGENT_LLM_MODEL=llama-3.3-70b-versatile`, `AGENT_LLM_API_KEY=<your free Groq key>`.
+   - Free, local via [LM Studio](https://lmstudio.ai): load a model, start
+     its local server (default `http://localhost:1234`, enable tool/function
+     calling for it in LM Studio's settings), then
+     `AGENT_LLM_PROVIDER=openai_compatible`, `AGENT_LLM_BASE_URL=http://localhost:1234/v1`,
+     `AGENT_LLM_MODEL=<the exact model id LM Studio shows you>` (no
+     `AGENT_LLM_API_KEY` needed — LM Studio's local server doesn't check one).
+     Pick a model that actually supports tool/function calling (e.g. a
+     Qwen2.5-Instruct or Llama-3.x-Instruct GGUF) — a base/non-tool-tuned
+     model will just talk and never call a tool, which looks like the
+     agent "doing nothing."
    - Anthropic (if you want Claude driving the harder planning steps):
      `AGENT_LLM_PROVIDER=anthropic`, `AGENT_LLM_MODEL=claude-sonnet-5-5`,
      `AGENT_LLM_API_KEY=<key>`.
