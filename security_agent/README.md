@@ -306,6 +306,8 @@ The agent doesn't rewrite its own code unsupervised. Growth happens three ways:
    ```bash
    python -m security_agent.cli learn https://github.com/someorg/sometool          # --type repo (default): drafts a tool + playbook
    python -m security_agent.cli learn ./some-report.md --type document             # drafts a playbook note
+   python -m security_agent.cli learn ./scanned-handbook.pdf --type document        # PDF -- OCR'd automatically if scanned
+   python -m security_agent.cli learn ./screenshot.png --type document             # image -- OCR'd directly
    python -m security_agent.cli learn https://example.com/writeup --type url       # fetches + strips HTML, drafts a playbook note
    python -m security_agent.cli learn "some pasted attack pattern" --type text     # no fetch at all, drafts a playbook note
    python -m security_agent.cli consolidate                                        # digests ALL past growth notes for recurring patterns
@@ -330,9 +332,22 @@ The agent doesn't rewrite its own code unsupervised. Growth happens three ways:
    section — but that's advice to the reviewer, not a gate, so re-check
    it yourself; see `security_agent/tools_staging/README.md` for the
    actual promotion process (a normal PR, same CODEOWNERS/eval-gate
-   review as anything else). All of this reads text only — image/video
-   analysis would need multimodal support in `providers.py`, which
-   isn't added yet.
+   review as anything else).
+
+   `--type document` handles plain text, PDFs, and images:
+   `security_agent/doc_extract.py` reads a PDF page by page (via
+   `pypdf`, a base dependency) and, for any page with little or no
+   extractable text — a scanned page, or an image-only PDF — falls
+   back to OCR for just that page (`pytesseract` + `PyMuPDF`, an
+   opt-in extra: `pip install -r security_agent/ocr_requirements.txt`
+   plus the `tesseract-ocr` system package). A plain image file
+   (`.png`/`.jpg`/`.tiff`/etc.) is OCR'd outright. When OCR is used,
+   the drafted note is prefixed with how many pages were OCR'd, since
+   OCR output can misread a character here and there — worth a glance
+   before treating it as gospel. If OCR is needed but not installed,
+   `learn` reports a clear error naming exactly what to install rather
+   than drafting a note from nothing. Video analysis would need
+   multimodal support in `providers.py`, which isn't added yet.
 3. **Capability growth** — promoting a staged draft, or adding a new
    tool directly in `security_agent/tools/`, adjusting the prompt in
    `loop.py`, or loosening `scope.yaml`, is a normal pull request. Two
@@ -356,21 +371,26 @@ authorization.
 ## Tests
 
 ```bash
-pip install -r requirements-dev.txt -r security_agent/ui_requirements.txt
+pip install -r requirements-dev.txt -r security_agent/ui_requirements.txt -r security_agent/ocr_requirements.txt
 python -m pytest tests/ -v
 ```
 
-161 tests covering `guardrails.py` (scope/budget/approval enforcement —
+169 tests covering `guardrails.py` (scope/budget/approval enforcement —
 the single most safety-critical file here), every tool's guardrail
 integration and category-escalation logic, `memory.py`'s playbook/
 growth-note loading, the CLI, the full agent loop against a scripted
-fake provider, and (`test_ui.py`) the command-center UI end to end —
+fake provider, (`test_ui.py`) the command-center UI end to end —
 starting a run over HTTP, blocking a real background thread on a gated
 approval, resolving it via `POST /api/approve` instead of stdin, and
 confirming the finished report is visible through the read-only
-endpoints. No GPU, API key, or network access needed — these are pure
-logic tests, separate from `evals/` (which needs a live model and real
-lab targets).
+endpoints — and (`test_doc_extract.py`) real OCR against a generated
+scanned-style PDF and image file (via a real tesseract binary, not
+mocked), plus the clean-refusal path when OCR isn't installed. The OCR
+tests skip rather than fail if `security_agent/ocr_requirements.txt`
+and the `tesseract-ocr` system package aren't installed — everything
+else needs no GPU, API key, or network access; these are pure logic
+tests, separate from `evals/` (which needs a live model and real lab
+targets).
 
 ## Extending
 

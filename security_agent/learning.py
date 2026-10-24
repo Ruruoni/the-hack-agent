@@ -32,6 +32,7 @@ import httpx
 
 from . import config as cfg
 from .config import AgentConfig
+from .doc_extract import OcrUnavailable, extract_document_text
 from .guardrails import AuditLog
 from .memory import KnowledgeBase
 from .providers import LLMProvider, build_provider
@@ -290,10 +291,12 @@ class LearningAgent:
     # ----------------------------------------------------- document / url / text
 
     def learn_from_document(self, path: str) -> LearningReport:
-        """Text documents only in this version -- .md/.txt/.py/.json/
-        .yaml/etc. Image/video analysis would need multimodal support
-        in providers.py, which this does not add; it refuses cleanly
-        for a binary/non-text file rather than pretending to read it.
+        """Plain text (.md/.txt/.py/.json/.yaml/etc.), PDF (text or
+        scanned -- scanned/image-only pages fall back to OCR), and
+        common image formats (.png/.jpg/.tiff/etc., always OCR'd).
+        Video analysis would need multimodal provider support, which
+        this does not add; it refuses cleanly for anything else rather
+        than pretending to read it.
         """
         self.audit.record("learning_action_started", source=path, kind="document")
         p = Path(path)
@@ -301,19 +304,38 @@ class LearningAgent:
             return self._finish(LearningReport(source=path, decision="error", reasoning=f"{path} does not exist."))
 
         try:
-            text = p.read_text(encoding="utf-8")
+            text, info = extract_document_text(p)
+        except OcrUnavailable as exc:
+            return self._finish(LearningReport(source=path, decision="error", reasoning=str(exc)))
         except UnicodeDecodeError:
             return self._finish(
                 LearningReport(
                     source=path, decision="error",
                     reasoning=(
-                        "Not a text file (binary content, or an image/video/PDF). "
-                        "This version only reads plain text -- image/video analysis "
-                        "needs multimodal provider support that hasn't been added yet."
+                        "Not a recognized text, PDF, or image file (unsupported binary "
+                        "content). Supported: plain text (.md/.txt/.py/.json/.yaml/"
+                        "etc.), PDF (text or scanned, via OCR), and common image "
+                        "formats (.png/.jpg/.tiff/etc.). Video analysis isn't "
+                        "supported."
                     ),
                 )
             )
-        return self._learn_from_informational_text(path, text, kind="document")
+        except Exception as exc:  # noqa: BLE001
+            return self._finish(LearningReport(source=path, decision="error", reasoning=f"Could not extract text: {exc}"))
+
+        if not text.strip():
+            return self._finish(
+                LearningReport(source=path, decision="error", reasoning=f"No extractable text found in {path}.")
+            )
+
+        content = text
+        if info.ocr_pages:
+            content = (
+                f"[Note: {info.ocr_pages} of {info.total_pages} page(s) of this "
+                f"document were extracted via OCR -- verify accuracy on anything "
+                f"safety-critical.]\n\n{text}"
+            )
+        return self._learn_from_informational_text(path, content, kind="document")
 
     def learn_from_url(self, url: str) -> LearningReport:
         """Any fetchable web page -- an article, write-up, advisory,

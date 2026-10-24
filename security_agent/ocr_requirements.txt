@@ -1,0 +1,13 @@
+# Only needed for OCR fallback on scanned/image-only PDF pages and
+# plain image files in `cli learn --type document`. Plain text PDFs
+# (pypdf, in the base requirements.txt) work without any of this.
+#
+# Also requires the tesseract-ocr system package:
+#   Debian/Ubuntu: apt install tesseract-ocr
+#   macOS:         brew install tesseract
+#   other:         https://github.com/tesseract-ocr/tesseract
+#
+# PyMuPDF is AGPL-licensed (or commercially licensed) -- review that
+# fits your use before installing if that matters for your deployment.
+pytesseract>=0.3.10
+pymupdf>=1.24

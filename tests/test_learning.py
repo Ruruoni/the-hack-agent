@@ -175,6 +175,92 @@ def test_learn_from_document_refuses_binary_content_cleanly(tmp_path, learning_a
     assert "multimodal" in report.reasoning.lower() or "binary" in report.reasoning.lower()
 
 
+pymupdf = pytest.importorskip("pymupdf", reason="OCR extras not installed")
+pytesseract = pytest.importorskip("pytesseract", reason="OCR extras not installed")
+
+
+def _tesseract_available() -> bool:
+    try:
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+requires_tesseract = pytest.mark.skipif(not _tesseract_available(), reason="tesseract binary not installed")
+
+
+def test_learn_from_document_reads_a_text_pdf_with_no_ocr_needed(tmp_path, learning_agent):
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Password field present, no CSRF token observed.")
+    pdf_path = tmp_path / "finding.pdf"
+    doc.save(str(pdf_path))
+    doc.close()
+
+    agent = learning_agent({})
+    agent.provider.chat = lambda messages, tools: FakeResponse("Notes a missing CSRF token.")
+    report = agent.learn_from_document(str(pdf_path))
+    assert report.decision == "summarized"
+    assert "CSRF" in report.reasoning
+
+
+@requires_tesseract
+def test_learn_from_document_ocrs_a_scanned_pdf(tmp_path, learning_agent):
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (900, 200), "white")
+    ImageDraw.Draw(img).text((20, 20), "Reconnaissance and scoping basics.", fill="black")
+    img_path = tmp_path / "page.png"
+    img.save(img_path)
+
+    pdf_path = tmp_path / "scanned.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=900, height=200)
+    page.insert_image(pymupdf.Rect(0, 0, 900, 200), filename=str(img_path))
+    doc.save(str(pdf_path))
+    doc.close()
+
+    captured = {}
+
+    def fake_chat(messages, tools):
+        captured["content"] = messages[-1]["content"]
+        return FakeResponse("Summarizes recon/scoping guidance.")
+
+    agent = learning_agent({})
+    agent.provider.chat = fake_chat
+    report = agent.learn_from_document(str(pdf_path))
+
+    assert report.decision == "summarized"
+    # The OCR provenance note must reach the model, not just get logged --
+    # it's the one thing standing between "verify this" and "trust this blindly".
+    assert "OCR" in captured["content"]
+
+
+def test_learn_from_document_ocr_unavailable_reports_install_hint(tmp_path, learning_agent, monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name in ("pytesseract", "pymupdf"):
+            raise ImportError(f"blocked for test: {name}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=200, height=200)
+    pdf_path = tmp_path / "blank-scan.pdf"
+    doc.save(str(pdf_path))
+    doc.close()
+
+    agent = learning_agent({})
+    report = agent.learn_from_document(str(pdf_path))
+    assert report.decision == "error"
+    assert "ocr_requirements.txt" in report.reasoning
+
+
 def test_learn_from_repo_writes_audit_trail(local_repo, learning_agent, tmp_path):
     agent = learning_agent({"decision": "decline", "reasoning": "nope"})
     agent.learn_from_repo(str(local_repo))
